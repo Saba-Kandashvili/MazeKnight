@@ -1,6 +1,6 @@
 # Tile Asset Instructions
 
-Place your 64x64 pixel PNG tile images in this folder.
+Place your 96x96 pixel PNG tile images in this folder.
 
 ## Required Files:
 
@@ -34,7 +34,7 @@ Place your 64x64 pixel PNG tile images in this folder.
 - If tiles are missing, the game will use colored placeholder rectangles
 - Recommended: Dark walls with light corridors for visibility
 - Format: PNG with transparency (optional)
-- Dimensions: Exactly 64x64 pixels
+-- Dimensions: Exactly 96x96 pixels
 
 ## Color Legend (Placeholders):
 

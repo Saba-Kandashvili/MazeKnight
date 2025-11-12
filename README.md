@@ -14,7 +14,7 @@ MazeKnight/
 │   ├── maze_generator.lua # Maze generation logic
 │   └── renderer.lua      # Rendering system
 ├── assets/               # Game assets
-│   └── tiles/            # Tile images (64x64 PNG files)
+│   └── tiles/            # Tile images (96x96 PNG files)
 │       ├── deadend.png
 │       ├── straight.png
 │       ├── corner.png
@@ -36,7 +36,7 @@ Copy your compiled Wave Function Collapse DLL to the `lib/` folder and rename it
 
 ### 3. Add Tile Images
 
-Place your 64x64 pixel tile PNG images in the `assets/tiles/` folder:
+Place your 96x96 pixel tile PNG images in the `assets/tiles/` folder:
 
 - **deadend.png** - Dead end corridor (opening facing north)
 - **straight.png** - Straight corridor (north-south orientation)
@@ -94,7 +94,7 @@ Each tile type represents a different corridor configuration:
 - **Wave Function Collapse**: Maze generation algorithm implemented in C
 - **Rotation**: Tiles are rotated programmatically (0°, 90°, 180°, 270°)
 - **Default Maze Size**: 20x20 tiles
-- **Tile Size**: 64x64 pixels
+-- **Tile Size**: 96x96 pixels
 
 ## Troubleshooting
 
@@ -107,7 +107,7 @@ Each tile type represents a different corridor configuration:
 ### Missing Tiles
 
 - The game will use colored placeholders if tile images are missing
-- Check that tile images are 64x64 pixels
+- Check that tile images are 96x96 pixels
 - Verify PNG format and file names match exactly
 
 ## Future Enhancements

@@ -1,4 +1,5 @@
 local TileMapper = require("src.tile_mapper")
+local Renderer = require("src.renderer")
 
 local Enemy = {}
 Enemy.__index = Enemy
@@ -8,8 +9,9 @@ function Enemy.new(x, y, maze)
     
     self.x = x
     self.y = y
-    self.pixelX = (x - 1) * 64 + 32
-    self.pixelY = (y - 1) * 64 + 32
+    local ts = Renderer.tileSize
+    self.pixelX = (x - 1) * ts + ts / 2
+    self.pixelY = (y - 1) * ts + ts / 2
     self.maze = maze
     self.direction = nil
     self.speed = 80
@@ -134,8 +136,9 @@ function Enemy:update(dt)
     end
     
     local movement = self.speed * dt
-    local targetPixelX = (self.x - 1) * 64 + 32
-    local targetPixelY = (self.y - 1) * 64 + 32
+    local ts = Renderer.tileSize
+    local targetPixelX = (self.x - 1) * ts + ts / 2
+    local targetPixelY = (self.y - 1) * ts + ts / 2
     
     local dx = targetPixelX - self.pixelX
     local dy = targetPixelY - self.pixelY
