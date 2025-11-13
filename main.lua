@@ -45,6 +45,38 @@ function love.load()
     
     -- Initialize renderer
     Renderer.init()
+    -- Create global darkness shader (used for gradient overlay)
+    do
+        local ok, shader = pcall(function()
+            return love.graphics.newShader([[
+                extern number cx;
+                extern number cy;
+                extern number innerRadius;
+                extern number outerRadius;
+                extern number exponent;
+
+                vec4 effect(vec4 color, Image texture, vec2 texCoord, vec2 px)
+                {
+                    float dist = distance(px, vec2(cx, cy));
+                    float t = 0.0;
+                    if (outerRadius > innerRadius) {
+                        t = clamp((dist - innerRadius) / (outerRadius - innerRadius), 0.0, 1.0);
+                    } else {
+                        t = step(innerRadius, dist);
+                    }
+                    t = pow(t, exponent);
+                    float alpha = t * color.a;
+                    return vec4(0.0, 0.0, 0.0, alpha);
+                }
+            ]])
+        end)
+        if ok and shader then
+            game.darknessShader = shader
+        else
+            game.darknessShader = nil
+            print("Warning: global darkness shader unavailable; falling back to stencil overlay")
+        end
+    end
     
     -- Generate initial maze
     generateNewMaze()
@@ -258,6 +290,7 @@ function love.update(dt)
                 game.savedCamera.y = Renderer.camera.y
                 game.savedCamera.scale = Renderer.camera.scale
                 game.showingMazeOverview = true
+                    Renderer.showingOverview = true
                 
                 -- Calculate scale to fit entire maze
                 local screenWidth, screenHeight = love.graphics.getDimensions()
@@ -282,6 +315,7 @@ function love.update(dt)
                 Renderer.camera.y = game.savedCamera.y
                 Renderer.camera.scale = game.savedCamera.scale
                 game.showingMazeOverview = false
+                Renderer.showingOverview = false
             end
             
             -- Normal camera follow player (center on player)
@@ -326,22 +360,40 @@ function love.draw()
     if game.player and not game.showingMazeOverview then
         local screenWidth = love.graphics.getWidth()
         local screenHeight = love.graphics.getHeight()
-        
+
         -- Calculate player's position on screen (world to screen coordinates)
         local playerScreenX = (game.player.pixelX - Renderer.camera.x) * Renderer.camera.scale
         local playerScreenY = (game.player.pixelY - Renderer.camera.y) * Renderer.camera.scale
-        
-        -- Create stencil for the clear vision circle centered on player
-        love.graphics.stencil(function()
-            love.graphics.circle("fill", playerScreenX, playerScreenY, game.visionRadius, 128)
-        end, "replace", 1)
-        
-        -- Draw complete darkness everywhere except inside the stencil circle
-        love.graphics.setStencilTest("equal", 0)
-        love.graphics.setColor(0, 0, 0, 1)  -- Complete darkness
-        love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
-        love.graphics.setStencilTest()
-        love.graphics.setColor(1, 1, 1)
+
+        -- If global shader available, use gradient overlay; otherwise fallback to stencil circle
+        if game.darknessShader then
+            local inner = (game.player.darkness and game.player.darkness.innerRadius or game.visionRadius) * Renderer.camera.scale
+            local outer = (game.player.darkness and game.player.darkness.outerRadius or (game.visionRadius * 2)) * Renderer.camera.scale
+            local exponent = (game.player.darkness and game.player.darkness.exponent) or 1.6
+            local alpha = (game.player.darkness and game.player.darkness.alpha) or game.darknessAlpha
+
+            game.darknessShader:send("cx", playerScreenX)
+            game.darknessShader:send("cy", playerScreenY)
+            game.darknessShader:send("innerRadius", inner)
+            game.darknessShader:send("outerRadius", outer)
+            game.darknessShader:send("exponent", exponent)
+
+            love.graphics.setShader(game.darknessShader)
+            love.graphics.setColor(0, 0, 0, alpha)
+            love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+            love.graphics.setShader()
+            love.graphics.setColor(1, 1, 1)
+        else
+            -- Fallback: stencil-based circle (older behavior)
+            love.graphics.stencil(function()
+                love.graphics.circle("fill", playerScreenX, playerScreenY, game.visionRadius, 128)
+            end, "replace", 1)
+            love.graphics.setStencilTest("equal", 0)
+            love.graphics.setColor(0, 0, 0, game.darknessAlpha)
+            love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+            love.graphics.setStencilTest()
+            love.graphics.setColor(1, 1, 1)
+        end
     end
     
     -- Draw debug UI overlay (only when debug mode is enabled)

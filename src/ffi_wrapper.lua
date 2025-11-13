@@ -1,7 +1,7 @@
--- FFI Wrapper for the Wave Function Collapse DLL
+-- FFI wrapper for my wave function collapse DLL
 local ffi = require("ffi")
 
--- Define the C function signatures
+-- C function signatures
 ffi.cdef[[
     typedef unsigned short uint16_t;
     typedef unsigned int uint32_t;
@@ -12,9 +12,8 @@ ffi.cdef[[
 
 local FFIWrapper = {}
 
--- Load the DLL (you need to place your compiled DLL in the lib folder)
--- The DLL should be named something like "mazegen.dll" or "libmazegen.dll"
-local dll_name = "lib/libWFC.dll"  -- Adjust this to your DLL name
+-- load the DLL
+local dll_name = "lib/libWFC.dll"
 local success, dll = pcall(function()
     return ffi.load(dll_name)
 end)
@@ -25,23 +24,21 @@ end
 
 FFIWrapper.dll = dll
 
--- Wrapper function to generate a maze grid
--- Returns a Lua table representation of the grid
+-- wrapper function to generate a maze grid
+-- eeturns a Lua table representation of the grid
 function FFIWrapper.generateMaze(width, height, layers, seed, fullness)
     layers = layers or 1
     seed = seed or os.time()
     fullness = fullness or 70
     
-    -- Call the C function
-    -- Note: C function signature is (width, length, height, seed, targetFullness)
-    -- We pass width, height, layers (which maps to length, height in C terms)
+    -- C function signature is (width, length, height, seed, targetFullness)
     local grid_ptr = dll.generateGrid(width, height, layers, seed, fullness)
     
     if grid_ptr == nil then
         error("Failed to generate maze grid")
     end
     
-    -- Convert the C array to a Lua table
+    -- convert the C array to a Lua table
     local lua_grid = {}
     
     for layer = 0, layers - 1 do
@@ -56,7 +53,7 @@ function FFIWrapper.generateMaze(width, height, layers, seed, fullness)
         end
     end
     
-    -- Free the C memory
+    -- free the C memory
     dll.freeGrid(grid_ptr, width, height, layers)
     
     return lua_grid

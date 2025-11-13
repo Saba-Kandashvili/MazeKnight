@@ -11,6 +11,7 @@ Renderer.camera = {
     y = 0,
     scale = 1.0
 }
+Renderer.showingOverview = false
 
 function Renderer.init()
     local TT = TileMapper.TileType

@@ -55,6 +55,26 @@ function Player.new(x, y, maze)
     self.damageTimer = 0
     
     self:loadSprite()
+    -- Darkness (radial gradient) presets and shader
+    self.darknessPresets = {
+        { name = "Subtle", innerRadius = 160, outerRadius = 420, exponent = 1.4, alpha = 0.85 },
+        { name = "Night",  innerRadius = 120, outerRadius = 320, exponent = 2.2, alpha = 0.98 },
+        { name = "Tunnel", innerRadius =  80, outerRadius = 240, exponent = 3.0, alpha = 1.00 }
+    }
+    self.currentDarknessPreset = 2 -- default to "Night"
+    self.darkness = {}
+    local function applyPreset(idx)
+        local p = self.darknessPresets[idx]
+        if not p then return end
+        self.darkness.innerRadius = p.innerRadius
+        self.darkness.outerRadius = p.outerRadius
+        self.darkness.exponent = p.exponent
+        self.darkness.alpha = p.alpha
+    end
+    applyPreset(self.currentDarknessPreset)
+
+    -- key debounce for cycling presets (press 'f' to cycle)
+    self._fWasDown = false
     
     return self
 end
@@ -74,7 +94,41 @@ function Player:loadSprite()
     end
 end
 
+function Player:loadDarknessShader()
+    -- Shader drawing is handled centrally in main.lua now.
+    -- Kept for API compatibility if code expects this method to exist.
+    return nil
+end
+
+function Player:applyDarknessPreset(idx)
+    if not self.darknessPresets then return end
+    idx = idx or self.currentDarknessPreset or 1
+    local p = self.darknessPresets[idx]
+    if not p then return end
+    self.currentDarknessPreset = idx
+    self.darkness.innerRadius = p.innerRadius
+    self.darkness.outerRadius = p.outerRadius
+    self.darkness.exponent = p.exponent
+    self.darkness.alpha = p.alpha
+    print(string.format("Darkness preset applied: %s", p.name))
+end
+
+function Player:cycleDarknessPreset()
+    if not self.darknessPresets then return end
+    local nextIdx = (self.currentDarknessPreset % #self.darknessPresets) + 1
+    self:applyDarknessPreset(nextIdx)
+end
+
 function Player:update(dt)
+    -- Handle cycling darkness presets with 'f' (debounced)
+    local fDown = love.keyboard.isDown("f")
+    if fDown and not self._fWasDown then
+        self._fWasDown = true
+        self:cycleDarknessPreset()
+    elseif not fDown and self._fWasDown then
+        self._fWasDown = false
+    end
+
     if self.isDead then
         self:updateAnimation(dt)
         return
@@ -307,7 +361,6 @@ function Player:draw()
             love.graphics.circle("fill", self.pixelX, self.pixelY, 4)
         end
         self:drawHealthBar()
-        return
     end
     
     local anim = ANIMATIONS[self.currentAnimation]
@@ -360,6 +413,14 @@ function Player:draw()
     
     love.graphics.setColor(1, 1, 1, 1)
     self:drawHealthBar()
+
+    -- Draw a radial darkness overlay centered on the player (skip during overview)
+    if not Renderer.showingOverview then
+        local w = love.graphics.getWidth()
+        local h = love.graphics.getHeight()
+
+        -- Darkness overlay is handled globally in main.lua; nothing to draw here.
+    end
 end
 
 function Player:drawHealthBar()

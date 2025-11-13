@@ -33,13 +33,12 @@ TileMapper.TileType = {
     EMPTY = "empty"
 }
 
--- Map tile code to tile type and rotation
--- Returns: { tileType = string, rotation = number (0-3, representing 90° increments) }
+-- type and rotation
 function TileMapper.codeToTile(code)
     local PF = TileMapper.PrefabCodes
     local TT = TileMapper.TileType
     
-    -- L-shaped corridors (Corner)
+    -- L
     if code == PF.North_East_Corridor then
         return { tileType = TT.CORNER, rotation = 0 }
     elseif code == PF.South_East_Corridor then
@@ -49,13 +48,13 @@ function TileMapper.codeToTile(code)
     elseif code == PF.North_West_Corridor then
         return { tileType = TT.CORNER, rotation = 3 }
     
-    -- Straight corridors
+    -- I
     elseif code == PF.North_South_Corridor then
         return { tileType = TT.STRAIGHT, rotation = 0 }
     elseif code == PF.West_East_Corridor then
         return { tileType = TT.STRAIGHT, rotation = 1 }
     
-    -- T-junctions
+    -- T
     elseif code == PF.North_T_Corridor then
         return { tileType = TT.T_JUNCTION, rotation = 0 }
     elseif code == PF.East_T_Corridor then
@@ -65,7 +64,7 @@ function TileMapper.codeToTile(code)
     elseif code == PF.West_T_Corridor then
         return { tileType = TT.T_JUNCTION, rotation = 3 }
     
-    -- Crossroads (X corridors)
+    -- X
     elseif code == PF.Normal_X_Corridor or code == PF.Special_X_Corridor then
         return { tileType = TT.CROSSROAD, rotation = 0 }
     
@@ -79,18 +78,16 @@ function TileMapper.codeToTile(code)
     elseif code == PF.West_DeadEnd then
         return { tileType = TT.DEADEND, rotation = 3 }
     
-    -- Default: empty tile
+    -- empty
     else
         return { tileType = TT.EMPTY, rotation = 0 }
     end
 end
 
--- Get rotation angle in radians
 function TileMapper.getRotationRadians(rotation)
     return rotation * (math.pi / 2)  -- Convert 0-3 to radians
 end
 
--- Check if a tile code is valid
 function TileMapper.isValidTile(code)
     local PF = TileMapper.PrefabCodes
     return code == PF.North_East_Corridor or
