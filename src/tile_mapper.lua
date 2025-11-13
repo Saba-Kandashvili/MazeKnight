@@ -1,9 +1,8 @@
--- Tile Mapping System
--- Maps tile codes from the WFC algorithm to tile types and rotations
+-- maps tile codes from my WFC algorithm to tile types and rotations
 
 local TileMapper = {}
 
--- Enum matching the C code
+-- matching the C code
 TileMapper.PrefabCodes = {
     Empty_Tile = 0,
     North_East_Corridor = 1,                    -- 1 << 0
@@ -24,13 +23,13 @@ TileMapper.PrefabCodes = {
     West_DeadEnd = 32768                        -- 1 << 15
 }
 
--- Tile types (corresponding to your tile image files)
+-- types
 TileMapper.TileType = {
-    DEADEND = "deadend",        -- corridorPrefabs[0]
-    STRAIGHT = "straight",      -- corridorPrefabs[1]
-    CORNER = "corner",          -- corridorPrefabs[2]
-    T_JUNCTION = "t_junction",  -- corridorPrefabs[3]
-    CROSSROAD = "crossroad",    -- corridorPrefabs[4]
+    DEADEND = "deadend",
+    STRAIGHT = "straight",
+    CORNER = "corner",
+    T_JUNCTION = "t_junction",
+    CROSSROAD = "crossroad",
     EMPTY = "empty"
 }
 

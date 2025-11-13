@@ -10,11 +10,24 @@ local Player = require("src.player")
 local game = {
     maze = nil,
     seed = nil,
-    mazeWidth = 20,
-    mazeHeight = 20,
+    mazeWidth = 10,
+    mazeHeight = 10,
     debug = true,
     enemies = {},
-    player = nil
+    player = nil,
+    showingMazeOverview = false,
+    savedCamera = { x = 0, y = 0, scale = 1 },  -- Store camera state when showing overview
+    finishTileX = nil,  -- Finish tile coordinates
+    finishTileY = nil,
+    -- Level transition
+    transitioning = false,
+    transitionAlpha = 0,
+    transitionState = "none",  -- "none", "fade_out", "fade_in"
+    transitionSpeed = 2.0,  -- How fast the fade happens
+    currentLevel = 1,
+    -- Darkness/Vision settings
+    visionRadius = 200,  -- Radius in pixels of the visible area around player
+    darknessAlpha = 0.85  -- How dark the fog is (0 = invisible, 1 = completely black)
 }
 
 function love.load()
@@ -55,24 +68,108 @@ function generateNewMaze()
     -- Generate maze using the DLL
     game.maze = MazeGenerator.generate(game.mazeWidth, game.mazeHeight, game.seed)
     
-    -- Find a valid starting position for the player
-    local playerSpawnX, playerSpawnY = nil, nil
+    -- Find crossroads near the edges for player spawn
+    local TileMapper = require("src.tile_mapper")
+    local PF = TileMapper.PrefabCodes
+    local edgeCrossroads = {}
+    local edgeThreshold = 3  -- How far from edge to consider "near edge"
+    
     for y = 1, game.maze.height do
         for x = 1, game.maze.width do
             local tile = game.maze.tiles[y][x]
-            if tile.tileType ~= "empty" then
-                playerSpawnX = x
-                playerSpawnY = y
-                break
+            -- Check if it's a crossroad (Normal_X_Corridor or Special_X_Corridor)
+            if tile.code == PF.Normal_X_Corridor or tile.code == PF.Special_X_Corridor then
+                -- Check if near any edge
+                local nearEdge = (x <= edgeThreshold or x > game.maze.width - edgeThreshold or
+                                 y <= edgeThreshold or y > game.maze.height - edgeThreshold)
+                if nearEdge then
+                    table.insert(edgeCrossroads, {x = x, y = y})
+                end
             end
         end
-        if playerSpawnX then break end
     end
     
-    -- Create player
+    -- Create player at random edge crossroad (or fallback to any valid tile)
+    local playerSpawnX, playerSpawnY = nil, nil
+    if #edgeCrossroads > 0 then
+        local spawnTile = edgeCrossroads[math.random(1, #edgeCrossroads)]
+        playerSpawnX = spawnTile.x
+        playerSpawnY = spawnTile.y
+        print(string.format("Player spawned at edge crossroad (%d, %d)", playerSpawnX, playerSpawnY))
+    else
+        -- Fallback: find any valid tile
+        for y = 1, game.maze.height do
+            for x = 1, game.maze.width do
+                local tile = game.maze.tiles[y][x]
+                if tile.tileType ~= "empty" then
+                    playerSpawnX = x
+                    playerSpawnY = y
+                    break
+                end
+            end
+            if playerSpawnX then break end
+        end
+        print(string.format("Player spawned at fallback position (%d, %d)", playerSpawnX, playerSpawnY))
+    end
+    
+    -- Create player and mark spawn tile
     if playerSpawnX then
         game.player = Player.new(playerSpawnX, playerSpawnY, game.maze)
-        print(string.format("Player spawned at (%d, %d)", playerSpawnX, playerSpawnY))
+        -- Mark the spawn tile so it renders with S.png instead of X.png
+        game.maze.tiles[playerSpawnY][playerSpawnX].isSpawn = true
+        
+        -- Find finish tile at opposite edge from spawn
+        -- Determine which edge the spawn is on and calculate center point of opposite edge
+        local spawnOnLeft = playerSpawnX <= edgeThreshold
+        local spawnOnRight = playerSpawnX > game.maze.width - edgeThreshold
+        local spawnOnTop = playerSpawnY <= edgeThreshold
+        local spawnOnBottom = playerSpawnY > game.maze.height - edgeThreshold
+        
+        -- Determine target edge position
+        local targetX, targetY
+        if spawnOnLeft then
+            targetX = game.maze.width  -- Right edge
+            targetY = game.maze.height / 2
+        elseif spawnOnRight then
+            targetX = 1  -- Left edge
+            targetY = game.maze.height / 2
+        elseif spawnOnTop then
+            targetX = game.maze.width / 2
+            targetY = game.maze.height  -- Bottom edge
+        elseif spawnOnBottom then
+            targetX = game.maze.width / 2
+            targetY = 1  -- Top edge
+        else
+            -- Spawn in middle, choose any edge
+            targetX = game.maze.width
+            targetY = game.maze.height / 2
+        end
+        
+        -- Find all crossroads and choose the one closest to the target edge position
+        local allCrossroads = {}
+        for y = 1, game.maze.height do
+            for x = 1, game.maze.width do
+                local tile = game.maze.tiles[y][x]
+                if (tile.code == PF.Normal_X_Corridor or tile.code == PF.Special_X_Corridor) and 
+                   not (x == playerSpawnX and y == playerSpawnY) then
+                    local distanceToTarget = math.sqrt((x - targetX)^2 + (y - targetY)^2)
+                    table.insert(allCrossroads, {x = x, y = y, distance = distanceToTarget})
+                end
+            end
+        end
+        
+        -- Choose the crossroad closest to the target edge position
+        if #allCrossroads > 0 then
+            table.sort(allCrossroads, function(a, b) return a.distance < b.distance end)
+            local finishTile = allCrossroads[1]
+            game.finishTileX = finishTile.x
+            game.finishTileY = finishTile.y
+            game.maze.tiles[finishTile.y][finishTile.x].isFinish = true
+            print(string.format("Finish tile placed at (%d, %d) - distance to target: %.1f", 
+                finishTile.x, finishTile.y, finishTile.distance))
+        else
+            print("Warning: Could not find suitable finish tile")
+        end
     end
     
     -- Spawn enemies at random valid tiles
@@ -115,10 +212,86 @@ function love.update(dt)
     if game.player then
         game.player:update(dt)
         
-        -- Center camera on player
-        local ts = Renderer.tileSize
-        Renderer.camera.x = game.player.pixelX - love.graphics.getWidth() / (2 * Renderer.camera.scale)
-        Renderer.camera.y = game.player.pixelY - love.graphics.getHeight() / (2 * Renderer.camera.scale)
+        -- Check if player reached finish tile center (1,1)
+        if game.finishTileX and game.finishTileY and not game.transitioning then
+            local finishSubX = (game.finishTileX - 1) * 3 + 2  -- Center of finish tile in sub-grid (1,1 = index 2)
+            local finishSubY = (game.finishTileY - 1) * 3 + 2
+            
+            if game.player.gridX == finishSubX and game.player.gridY == finishSubY then
+                print(string.format("\n=== LEVEL %d COMPLETE! ===", game.currentLevel))
+                print(string.format("Player at (%d, %d), Finish at (%d, %d)", 
+                    game.player.gridX, game.player.gridY, finishSubX, finishSubY))
+                game.transitioning = true
+                game.transitionState = "fade_out"
+                game.transitionAlpha = 0
+            end
+        end
+        
+        -- Handle level transition
+        if game.transitioning then
+            if game.transitionState == "fade_out" then
+                game.transitionAlpha = game.transitionAlpha + (dt * game.transitionSpeed)
+                if game.transitionAlpha >= 1 then
+                    game.transitionAlpha = 1
+                    -- Screen is fully black, generate new level
+                    game.currentLevel = game.currentLevel + 1
+                    print(string.format("Generating Level %d...", game.currentLevel))
+                    generateNewMaze()
+                    game.transitionState = "fade_in"
+                end
+            elseif game.transitionState == "fade_in" then
+                game.transitionAlpha = game.transitionAlpha - (dt * game.transitionSpeed)
+                if game.transitionAlpha <= 0 then
+                    game.transitionAlpha = 0
+                    game.transitioning = false
+                    game.transitionState = "none"
+                    print("Transition complete!\n")
+                end
+            end
+        end
+        
+        -- Debug mode: Show entire maze when backspace is held
+        if game.debug and love.keyboard.isDown("backspace") then
+            if not game.showingMazeOverview then
+                -- Save current camera state
+                game.savedCamera.x = Renderer.camera.x
+                game.savedCamera.y = Renderer.camera.y
+                game.savedCamera.scale = Renderer.camera.scale
+                game.showingMazeOverview = true
+                
+                -- Calculate scale to fit entire maze
+                local screenWidth, screenHeight = love.graphics.getDimensions()
+                local mazePixelWidth = game.maze.width * Renderer.tileSize
+                local mazePixelHeight = game.maze.height * Renderer.tileSize
+                
+                -- Calculate scale to fit the entire maze with padding
+                local scaleX = screenWidth / mazePixelWidth
+                local scaleY = screenHeight / mazePixelHeight
+                Renderer.camera.scale = math.min(scaleX, scaleY) * 0.95  -- 0.95 for some padding
+                
+                -- Position camera so (0,0) of maze is visible and maze is centered
+                local scaledScreenWidth = screenWidth / Renderer.camera.scale
+                local scaledScreenHeight = screenHeight / Renderer.camera.scale
+                Renderer.camera.x = -(scaledScreenWidth - mazePixelWidth) / 2
+                Renderer.camera.y = -(scaledScreenHeight - mazePixelHeight) / 2
+            end
+        else
+            if game.showingMazeOverview then
+                -- Restore camera to follow player
+                Renderer.camera.x = game.savedCamera.x
+                Renderer.camera.y = game.savedCamera.y
+                Renderer.camera.scale = game.savedCamera.scale
+                game.showingMazeOverview = false
+            end
+            
+            -- Normal camera follow player (center on player)
+            if not game.showingMazeOverview then
+                local screenWidth = love.graphics.getWidth()
+                local screenHeight = love.graphics.getHeight()
+                Renderer.camera.x = game.player.pixelX - (screenWidth / (2 * Renderer.camera.scale))
+                Renderer.camera.y = game.player.pixelY - (screenHeight / (2 * Renderer.camera.scale))
+            end
+        end
     end
     
     -- Update enemies
@@ -126,13 +299,15 @@ function love.update(dt)
         enemy:update(dt)
     end
     
-    -- Zoom controls (+ and -)
-    if love.keyboard.isDown("=") or love.keyboard.isDown("+") then
-        Renderer.camera.scale = Renderer.camera.scale * (1 + dt)
-    end
-    if love.keyboard.isDown("-") then
-        Renderer.camera.scale = Renderer.camera.scale * (1 - dt)
-        if Renderer.camera.scale < 0.1 then Renderer.camera.scale = 0.1 end
+    -- Zoom controls (+ and -) - disabled during overview
+    if not game.showingMazeOverview then
+        if love.keyboard.isDown("=") or love.keyboard.isDown("+") then
+            Renderer.camera.scale = Renderer.camera.scale * (1 + dt)
+        end
+        if love.keyboard.isDown("-") then
+            Renderer.camera.scale = Renderer.camera.scale * (1 - dt)
+            if Renderer.camera.scale < 0.1 then Renderer.camera.scale = 0.1 end
+        end
     end
 end
 
@@ -140,33 +315,67 @@ function love.draw()
     -- Draw the maze and enemies
     Renderer.drawMaze(game.maze, game.enemies, game.player)
     
-    -- Draw UI overlay
-    love.graphics.setColor(0, 0, 0, 0.9)
-    love.graphics.rectangle("fill", 10, 10, 450, 140)
-    love.graphics.setColor(1, 1, 1)
-    
-    love.graphics.print("MazeKnight - Procedural Maze Explorer", 20, 20)
-    love.graphics.print(string.format("Maze Size: %dx%d", game.mazeWidth, game.mazeHeight), 20, 40)
-    love.graphics.print(string.format("Seed: %d", game.seed or 0), 20, 60)
-    if game.player then
-        love.graphics.print(string.format("Health: %d | Pos: (%d, %d) | Anim: %s", 
-            game.player.health, game.player.gridX, game.player.gridY, game.player.currentAnimation), 20, 80)
-        love.graphics.print(string.format("Pixel: (%.0f, %.0f) | Sprite: %s", 
-            game.player.pixelX, game.player.pixelY, game.player.spritesheet and "OK" or "MISSING"), 20, 100)
+    -- Draw fade transition overlay
+    if game.transitioning and game.transitionAlpha > 0 then
+        love.graphics.setColor(0, 0, 0, game.transitionAlpha)
+        love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+        love.graphics.setColor(1, 1, 1)
     end
-    love.graphics.print(string.format("Camera: (%.0f, %.0f) Scale: %.2f | Tiles: %s", 
-        Renderer.camera.x, Renderer.camera.y, Renderer.camera.scale,
-        game.maze and "OK" or "NONE"), 20, 120)
     
-    -- Draw FPS
-    love.graphics.setColor(0, 1, 0)
-    love.graphics.print("FPS: " .. love.timer.getFPS(), 20, love.graphics.getHeight() - 30)
-    love.graphics.setColor(1, 1, 1)
+    -- Draw darkness overlay with clear vision circle centered on player
+    if game.player and not game.showingMazeOverview then
+        local screenWidth = love.graphics.getWidth()
+        local screenHeight = love.graphics.getHeight()
+        
+        -- Calculate player's position on screen (world to screen coordinates)
+        local playerScreenX = (game.player.pixelX - Renderer.camera.x) * Renderer.camera.scale
+        local playerScreenY = (game.player.pixelY - Renderer.camera.y) * Renderer.camera.scale
+        
+        -- Create stencil for the clear vision circle centered on player
+        love.graphics.stencil(function()
+            love.graphics.circle("fill", playerScreenX, playerScreenY, game.visionRadius, 128)
+        end, "replace", 1)
+        
+        -- Draw complete darkness everywhere except inside the stencil circle
+        love.graphics.setStencilTest("equal", 0)
+        love.graphics.setColor(0, 0, 0, 1)  -- Complete darkness
+        love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
+        love.graphics.setStencilTest()
+        love.graphics.setColor(1, 1, 1)
+    end
+    
+    -- Draw debug UI overlay (only when debug mode is enabled)
+    if game.debug then
+        love.graphics.setColor(0, 0, 0, 0.9)
+        love.graphics.rectangle("fill", 10, 10, 450, 140)
+        love.graphics.setColor(1, 1, 1)
+        
+        love.graphics.print("MazeKnight - Procedural Maze Explorer", 20, 20)
+        love.graphics.print(string.format("Level: %d | Maze: %dx%d | Seed: %d", 
+            game.currentLevel, game.mazeWidth, game.mazeHeight, game.seed or 0), 20, 40)
+        if game.player then
+            love.graphics.print(string.format("Health: %d | Pos: (%d, %d) | Anim: %s", 
+                game.player.health, game.player.gridX, game.player.gridY, game.player.currentAnimation), 20, 80)
+            love.graphics.print(string.format("Pixel: (%.0f, %.0f) | Sprite: %s", 
+                game.player.pixelX, game.player.pixelY, game.player.spritesheet and "OK" or "MISSING"), 20, 100)
+        end
+        love.graphics.print(string.format("Camera: (%.0f, %.0f) Scale: %.2f | Tiles: %s", 
+            Renderer.camera.x, Renderer.camera.y, Renderer.camera.scale,
+            game.maze and "OK" or "NONE"), 20, 120)
+        
+        -- Draw FPS
+        love.graphics.setColor(0, 1, 0)
+        love.graphics.print("FPS: " .. love.timer.getFPS(), 20, love.graphics.getHeight() - 30)
+        love.graphics.setColor(1, 1, 1)
+    end
 end
 
 function love.keypressed(key)
     if key == "escape" then
         love.event.quit()
+    elseif key == "f3" then
+        game.debug = not game.debug
+        print(string.format("Debug mode: %s", game.debug and "ON" or "OFF"))
     elseif key == "n" then
         generateNewMaze()
     elseif key == "f" then

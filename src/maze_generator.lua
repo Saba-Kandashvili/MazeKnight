@@ -3,6 +3,7 @@
 
 local FFIWrapper = require("src.ffi_wrapper")
 local TileMapper = require("src.tile_mapper")
+local Tile = require("src.tile")
 
 local MazeGenerator = {}
 
@@ -15,9 +16,10 @@ function MazeGenerator.generate(width, height, seed)
     
     for attempt = 1, maxAttempts do
         local currentSeed = seed + attempt - 1
-        print(string.format("Generating maze: %dx%d, seed: %d (attempt %d)", width, height, currentSeed, attempt))
+        print(string.format("Generating maze: %dx%d (W×H), seed: %d (attempt %d)", width, height, currentSeed, attempt))
         
         -- Generate using the DLL (single layer for now)
+        -- Parameters: width, height, layers, seed, fullness
         local raw_grid = FFIWrapper.generateMaze(width, height, 1, currentSeed, 80)
         
         -- Count valid tiles (only tiles with valid codes)
@@ -77,13 +79,8 @@ function MazeGenerator.processGrid(raw_layer, width, height)
             
             local tile_info = TileMapper.codeToTile(code)
             
-            grid[y][x] = {
-                code = code,
-                tileType = tile_info.tileType,
-                rotation = tile_info.rotation,
-                x = x,
-                y = y
-            }
+            -- Create a smart Tile object instead of plain data
+            grid[y][x] = Tile.new(x, y, tile_info.tileType, tile_info.rotation, code)
             
             -- Collect valid edge tiles (only tiles with valid codes on edges)
             if TileMapper.isValidTile(code) then

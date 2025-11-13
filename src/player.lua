@@ -23,8 +23,9 @@ function Player.new(x, y, maze)
     local self = setmetatable({}, Player)
     
     -- Use sub-grid coordinates (each tile is 3x3 sub-cells)
-    self.gridX = (x - 1) * 3 + 1  -- Convert tile coords to sub-grid coords
-    self.gridY = (y - 1) * 3 + 1
+    -- Start at (1,1) within the tile, which is the center and always walkable
+    self.gridX = (x - 1) * 3 + 2  -- Convert tile coords to sub-grid coords, then add 1 for center
+    self.gridY = (y - 1) * 3 + 2  -- This puts player at (1,1) within the 3x3 tile grid
     self.maze = maze
     self.cellSize = 32  -- Each sub-cell is 32x32 pixels (96/3)
     
@@ -59,7 +60,7 @@ function Player.new(x, y, maze)
 end
 
 function Player:loadSprite()
-    local path = "assets/tiles/player/knight.png"
+    local path = "assets/player/knight.png"
     local success, image = pcall(love.graphics.newImage, path)
     
     if success then
@@ -151,11 +152,16 @@ function Player:handleInput()
 end
 
 function Player:canMoveTo(gridX, gridY)
-    -- Convert sub-grid coordinates to tile coordinates
+    -- Convert sub-grid coordinates to tile coordinates and sub-cell position
     local tileX = math.floor((gridX - 1) / 3) + 1
     local tileY = math.floor((gridY - 1) / 3) + 1
+    local subX = ((gridX - 1) % 3) + 1
+    local subY = ((gridY - 1) % 3) + 1
+    
     local currentTileX = math.floor((self.gridX - 1) / 3) + 1
     local currentTileY = math.floor((self.gridY - 1) / 3) + 1
+    local currentSubX = ((self.gridX - 1) % 3) + 1
+    local currentSubY = ((self.gridY - 1) % 3) + 1
     
     -- Check if within maze bounds
     if tileX < 1 or tileX > self.maze.width or tileY < 1 or tileY > self.maze.height then
@@ -163,28 +169,27 @@ function Player:canMoveTo(gridX, gridY)
     end
     
     local targetTile = self.maze.tiles[tileY][tileX]
-    if not targetTile or targetTile.tileType == TileMapper.TileType.EMPTY then
+    if not targetTile then
         return false
     end
     
-    -- If staying in same tile, allow free movement
-    if tileX == currentTileX and tileY == currentTileY then
-        return true
-    end
-    
-    local currentTile = self.maze.tiles[currentTileY][currentTileX]
     local direction = self:getDirectionTo(gridX, gridY)
     
-    if not self:canExitTile(currentTile, direction) then
-        print(string.format("Cannot exit tile at (%d,%d) code=%d towards %s", 
-            self.gridX, self.gridY, currentTile.code, direction))
+    -- If moving within the same tile, check collision grid
+    if tileX == currentTileX and tileY == currentTileY then
+        return targetTile:isWalkable(subX, subY)
+    end
+    
+    -- If moving to a different tile, check if we can exit current and enter target
+    local currentTile = self.maze.tiles[currentTileY][currentTileX]
+    
+    -- Check if we can exit from current sub-cell
+    if not currentTile:canExitFrom(currentSubX, currentSubY, direction) then
         return false
     end
     
-    local oppositeDir = self:getOppositeDirection(direction)
-    if not self:canEnterTile(targetTile, oppositeDir) then
-        print(string.format("Cannot enter tile at (%d,%d) code=%d from %s", 
-            gridX, gridY, targetTile.code, oppositeDir))
+    -- Check if target sub-cell is walkable
+    if not targetTile:isWalkable(subX, subY) then
         return false
     end
     
@@ -207,62 +212,6 @@ function Player:getOppositeDirection(direction)
     elseif direction == "west" then return "east"
     end
     return nil
-end
-
-function Player:canExitTile(tile, direction)
-    if not tile or tile.tileType == TileMapper.TileType.EMPTY then
-        return false
-    end
-    
-    local code = tile.code
-    local PF = TileMapper.PrefabCodes
-    
-    if direction == "north" then
-        return code == PF.North_South_Corridor or
-               code == PF.North_East_Corridor or
-               code == PF.North_West_Corridor or
-               code == PF.North_T_Corridor or
-               code == PF.East_T_Corridor or
-               code == PF.West_T_Corridor or
-               code == PF.Normal_X_Corridor or
-               code == PF.North_DeadEnd
-               
-    elseif direction == "south" then
-        return code == PF.North_South_Corridor or
-               code == PF.South_East_Corridor or
-               code == PF.South_West_Corridor or
-               code == PF.South_T_Corridor or
-               code == PF.East_T_Corridor or
-               code == PF.West_T_Corridor or
-               code == PF.Normal_X_Corridor or
-               code == PF.South_DeadEnd
-               
-    elseif direction == "east" then
-        return code == PF.East_West_Corridor or
-               code == PF.North_East_Corridor or
-               code == PF.South_East_Corridor or
-               code == PF.North_T_Corridor or
-               code == PF.South_T_Corridor or
-               code == PF.East_T_Corridor or
-               code == PF.Normal_X_Corridor or
-               code == PF.East_DeadEnd
-               
-    elseif direction == "west" then
-        return code == PF.East_West_Corridor or
-               code == PF.North_West_Corridor or
-               code == PF.South_West_Corridor or
-               code == PF.North_T_Corridor or
-               code == PF.South_T_Corridor or
-               code == PF.West_T_Corridor or
-               code == PF.Normal_X_Corridor or
-               code == PF.West_DeadEnd
-    end
-    
-    return false
-end
-
-function Player:canEnterTile(tile, fromDirection)
-    return self:canExitTile(tile, fromDirection)
 end
 
 function Player:updateMovement(dt)

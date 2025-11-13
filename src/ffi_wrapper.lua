@@ -30,9 +30,11 @@ FFIWrapper.dll = dll
 function FFIWrapper.generateMaze(width, height, layers, seed, fullness)
     layers = layers or 1
     seed = seed or os.time()
-    fullness = fullness or 80
+    fullness = fullness or 70
     
     -- Call the C function
+    -- Note: C function signature is (width, length, height, seed, targetFullness)
+    -- We pass width, height, layers (which maps to length, height in C terms)
     local grid_ptr = dll.generateGrid(width, height, layers, seed, fullness)
     
     if grid_ptr == nil then

@@ -20,6 +20,8 @@ function Renderer.init()
     Renderer.tiles[TT.CORNER] = Renderer.loadTileImage("L.png")
     Renderer.tiles[TT.T_JUNCTION] = Renderer.loadTileImage("T.png")
     Renderer.tiles[TT.CROSSROAD] = Renderer.loadTileImage("X.png")
+    Renderer.tiles.SPAWN = Renderer.loadTileImage("S.png")  -- Special spawn marker
+    Renderer.tiles.FINISH = Renderer.loadTileImage("F.png")  -- Special finish marker
     Renderer.tiles[TT.EMPTY] = Renderer.loadTileImage("E.png")
     
     print("Renderer initialized")
@@ -39,7 +41,13 @@ function Renderer.loadTileImage(filename)
 end
 
 function Renderer.drawTile(tile, x, y, tintColor)
+    -- Use special textures for spawn/finish tiles, otherwise use normal tile texture
     local image = Renderer.tiles[tile.tileType]
+    if tile.isSpawn then
+        image = Renderer.tiles.SPAWN
+    elseif tile.isFinish then
+        image = Renderer.tiles.FINISH
+    end
     local rotation = TileMapper.getRotationRadians(tile.rotation)
     
     local drawX = x * Renderer.tileSize
