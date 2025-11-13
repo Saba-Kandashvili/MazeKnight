@@ -22,24 +22,25 @@ local ANIMATIONS = {
 function Player.new(x, y, maze)
     local self = setmetatable({}, Player)
     
-    self.gridX = x
-    self.gridY = y
+    -- Use sub-grid coordinates (each tile is 3x3 sub-cells)
+    self.gridX = (x - 1) * 3 + 1  -- Convert tile coords to sub-grid coords
+    self.gridY = (y - 1) * 3 + 1
     self.maze = maze
+    self.cellSize = 32  -- Each sub-cell is 32x32 pixels (96/3)
     
-    local ts = Renderer.tileSize
-    self.pixelX = (x - 1) * ts + ts / 2
-    self.pixelY = (y - 1) * ts + ts / 2
+    self.pixelX = (self.gridX - 1) * self.cellSize + self.cellSize / 2
+    self.pixelY = (self.gridY - 1) * self.cellSize + self.cellSize / 2
     
-    self.targetGridX = x
-    self.targetGridY = y
+    self.targetGridX = self.gridX
+    self.targetGridY = self.gridY
     self.isMoving = false
-    self.moveSpeed = 4
+    self.moveSpeed = 8  -- Cells per second (faster since cells are smaller)
     self.direction = "right"
     
     self.spritesheet = nil
     self.frameWidth = 64  -- knight.png is 512x512, 8x8 grid = 64x64 per frame
     self.frameHeight = 64
-    self.spriteScale = 0.375  -- Scale down to 24 pixels (64 * 0.375 = 24)
+    self.spriteScale = 1.5  -- Scale to make player more visible (64 * 0.75 = 48 pixels)
     self.currentAnimation = "idle"
     self.currentFrame = 1
     self.animationTimer = 0
@@ -150,16 +151,28 @@ function Player:handleInput()
 end
 
 function Player:canMoveTo(gridX, gridY)
-    if gridX < 1 or gridX > self.maze.width or gridY < 1 or gridY > self.maze.height then
+    -- Convert sub-grid coordinates to tile coordinates
+    local tileX = math.floor((gridX - 1) / 3) + 1
+    local tileY = math.floor((gridY - 1) / 3) + 1
+    local currentTileX = math.floor((self.gridX - 1) / 3) + 1
+    local currentTileY = math.floor((self.gridY - 1) / 3) + 1
+    
+    -- Check if within maze bounds
+    if tileX < 1 or tileX > self.maze.width or tileY < 1 or tileY > self.maze.height then
         return false
     end
     
-    local targetTile = self.maze.tiles[gridY][gridX]
+    local targetTile = self.maze.tiles[tileY][tileX]
     if not targetTile or targetTile.tileType == TileMapper.TileType.EMPTY then
         return false
     end
     
-    local currentTile = self.maze.tiles[self.gridY][self.gridX]
+    -- If staying in same tile, allow free movement
+    if tileX == currentTileX and tileY == currentTileY then
+        return true
+    end
+    
+    local currentTile = self.maze.tiles[currentTileY][currentTileX]
     local direction = self:getDirectionTo(gridX, gridY)
     
     if not self:canExitTile(currentTile, direction) then
@@ -253,11 +266,10 @@ function Player:canEnterTile(tile, fromDirection)
 end
 
 function Player:updateMovement(dt)
-    local ts = Renderer.tileSize
-    local targetPixelX = (self.targetGridX - 1) * ts + ts / 2
-    local targetPixelY = (self.targetGridY - 1) * ts + ts / 2
+    local targetPixelX = (self.targetGridX - 1) * self.cellSize + self.cellSize / 2
+    local targetPixelY = (self.targetGridY - 1) * self.cellSize + self.cellSize / 2
     
-    local moveDistance = self.moveSpeed * ts * dt
+    local moveDistance = self.moveSpeed * self.cellSize * dt
     
     local dx = targetPixelX - self.pixelX
     local dy = targetPixelY - self.pixelY
