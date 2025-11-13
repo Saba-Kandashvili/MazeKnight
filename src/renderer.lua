@@ -108,8 +108,24 @@ function Renderer.drawMaze(maze, enemies, player)
     if not maze then return end
     
     love.graphics.push()
-    love.graphics.translate(-Renderer.camera.x, -Renderer.camera.y)
-    love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
+    
+    -- If we have a player, center the view directly on player position
+    -- This bypasses Renderer.camera to avoid any coordinate drift
+    if player and not Renderer.showingOverview then
+        local screenWidth = love.graphics.getWidth()
+        local screenHeight = love.graphics.getHeight()
+        local centerX = screenWidth / 2
+        local centerY = screenHeight / 2
+        
+        -- Translate so player appears at screen center
+        love.graphics.translate(centerX, centerY)
+        love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
+        love.graphics.translate(-player.pixelX, -player.pixelY)
+    else
+        -- Use camera coordinates for overview mode
+        love.graphics.translate(-Renderer.camera.x, -Renderer.camera.y)
+        love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
+    end
 
     -- Draw all maze tiles first
     for y = 1, maze.height do
@@ -129,11 +145,18 @@ function Renderer.drawMaze(maze, enemies, player)
     end
 
     -- Draw player on top of everything
+    local playerScreenX, playerScreenY
     if player then
         player:draw()
+        -- Capture player screen position (after transform, before pop)
+        playerScreenX = player.pixelX
+        playerScreenY = player.pixelY - 8  -- Match sprite draw offset
     end
 
     love.graphics.pop()
+    
+    -- Return player screen position for overlay alignment
+    return playerScreenX, playerScreenY
 end
 
 function Renderer.drawMazeWithPlayer(maze, enemies, player, spritesheet, quads)

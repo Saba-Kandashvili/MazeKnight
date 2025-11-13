@@ -317,14 +317,6 @@ function love.update(dt)
                 game.showingMazeOverview = false
                 Renderer.showingOverview = false
             end
-            
-            -- Normal camera follow player (center on player)
-            if not game.showingMazeOverview then
-                local screenWidth = love.graphics.getWidth()
-                local screenHeight = love.graphics.getHeight()
-                Renderer.camera.x = game.player.pixelX - (screenWidth / (2 * Renderer.camera.scale))
-                Renderer.camera.y = game.player.pixelY - (screenHeight / (2 * Renderer.camera.scale))
-            end
         end
     end
     
@@ -346,6 +338,14 @@ function love.update(dt)
 end
 
 function love.draw()
+    -- Always center camera on player before drawing (unless showing overview)
+    if game.player and not game.showingMazeOverview then
+        local screenWidth = love.graphics.getWidth()
+        local screenHeight = love.graphics.getHeight()
+        Renderer.camera.x = game.player.pixelX - (screenWidth / (2 * Renderer.camera.scale))
+        Renderer.camera.y = game.player.pixelY - (screenHeight / (2 * Renderer.camera.scale))
+    end
+    
     -- Draw the maze and enemies
     Renderer.drawMaze(game.maze, game.enemies, game.player)
     
@@ -356,14 +356,14 @@ function love.draw()
         love.graphics.setColor(1, 1, 1)
     end
     
-    -- Draw darkness overlay with clear vision circle centered on player
+    -- Draw darkness overlay centered on screen center (which is where player is because camera is centered)
     if game.player and not game.showingMazeOverview then
         local screenWidth = love.graphics.getWidth()
         local screenHeight = love.graphics.getHeight()
 
-        -- Calculate player's position on screen (world to screen coordinates)
-        local playerScreenX = (game.player.pixelX - Renderer.camera.x) * Renderer.camera.scale
-        local playerScreenY = (game.player.pixelY - Renderer.camera.y) * Renderer.camera.scale
+        -- Player is ALWAYS at screen center because camera is centered on player
+        local playerScreenX = screenWidth / 2
+        local playerScreenY = screenHeight / 2
 
         -- If global shader available, use gradient overlay; otherwise fallback to stencil circle
         if game.darknessShader then
