@@ -28,6 +28,36 @@ function Renderer.init()
     print("Renderer initialized")
 end
 
+    -- Load enemy spritesheet (bat) and create quads (32x32 grid inside 128x128 image)
+    local enemyPath = "assets/enemy/bat.png"
+    local ok, enemyImage = pcall(love.graphics.newImage, enemyPath)
+    if ok and enemyImage then
+        Renderer.enemy = {}
+        Renderer.enemy.spritesheet = enemyImage
+        Renderer.enemy.frameSize = 32
+        Renderer.enemy.quads = {}
+        local tile = Renderer.enemy.frameSize
+        local w, h = enemyImage:getWidth(), enemyImage:getHeight()
+        for row = 1, 4 do
+            Renderer.enemy.quads[row] = {}
+            for col = 1, 4 do
+                Renderer.enemy.quads[row][col] = love.graphics.newQuad(
+                    (col - 1) * tile,
+                    (row - 1) * tile,
+                    tile,
+                    tile,
+                    w,
+                    h
+                )
+            end
+        end
+        Renderer.enemy.scale = Renderer.tileSize / Renderer.enemy.frameSize
+        print("Loaded enemy spritesheet: " .. enemyPath)
+    else
+        print("Warning: could not load enemy spritesheet: " .. enemyPath)
+        Renderer.enemy = nil
+    end
+
 function Renderer.loadTileImage(filename)
     local path = "assets/tiles/" .. filename
     local success, image = pcall(love.graphics.newImage, path)

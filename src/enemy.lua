@@ -17,6 +17,16 @@ function Enemy.new(x, y, maze)
     self.speed = 80
     self.radius = 12
     
+    -- Sprite / animation defaults (bat spritesheet is 32x32 frames inside a 128x128 image)
+    self.spriteSheet = Renderer.enemy and Renderer.enemy.spritesheet or nil
+    self.frameWidth = 32
+    self.frameHeight = 32
+    self.spriteScale = (Renderer.enemy and Renderer.enemy.scale) or (ts / self.frameWidth)
+    self.animFrame = 1 -- 1..3 corresponding to cols 2..4
+    self.animTimer = 0
+    self.animSpeed = 0.12
+    self.isDead = false
+
     self:chooseNewDirection()
     
     return self
@@ -177,32 +187,57 @@ function Enemy:update(dt)
             self.pixelX = self.pixelX - movement
         end
     end
+
+    -- no separate facing; sprite row is chosen from actual move direction
+
+    -- Update wing flap animation (only when alive)
+    if not self.isDead then
+        self.animTimer = self.animTimer + dt
+        if self.animTimer >= self.animSpeed then
+            self.animTimer = self.animTimer - self.animSpeed
+            self.animFrame = self.animFrame + 1
+            if self.animFrame > 3 then self.animFrame = 1 end
+        end
+    else
+        -- dead: stick to frame 1 (col 1)
+        self.animFrame = 1
+    end
 end
 
 function Enemy:draw()
-    love.graphics.setColor(1, 0, 0)
-    love.graphics.circle("fill", self.pixelX, self.pixelY, self.radius)
-    
-    love.graphics.setColor(1, 1, 1, 0.8)
-    if self.direction == "north" then
-        love.graphics.polygon("fill", self.pixelX, self.pixelY - 8, 
-                                      self.pixelX - 4, self.pixelY - 4, 
-                                      self.pixelX + 4, self.pixelY - 4)
-    elseif self.direction == "south" then
-        love.graphics.polygon("fill", self.pixelX, self.pixelY + 8, 
-                                      self.pixelX - 4, self.pixelY + 4, 
-                                      self.pixelX + 4, self.pixelY + 4)
-    elseif self.direction == "east" then
-        love.graphics.polygon("fill", self.pixelX + 8, self.pixelY, 
-                                      self.pixelX + 4, self.pixelY - 4, 
-                                      self.pixelX + 4, self.pixelY + 4)
-    elseif self.direction == "west" then
-        love.graphics.polygon("fill", self.pixelX - 8, self.pixelY, 
-                                      self.pixelX - 4, self.pixelY - 4, 
-                                      self.pixelX - 4, self.pixelY + 4)
+    -- Draw sprite if available, otherwise fallback to simple shape
+    if self.spriteSheet and Renderer.enemy and Renderer.enemy.quads then
+        -- Rows mapping: use specific rows for direction
+        -- Desired mapping: north (up) -> row 3, east (right) -> row 2,
+        -- south (down) -> row 1, west (left) -> row 4
+        local rowMap = { north = 3, east = 2, south = 1, west = 4 }
+        local row = rowMap[self.direction] or 2
+        local quad = nil
+        if self.isDead then
+            quad = Renderer.enemy.quads[row][1] -- first column = dead
+        else
+            -- Reverse animation order: animFrame 1..3 -> cols 4..2
+            local col = 5 - self.animFrame
+            quad = Renderer.enemy.quads[row][col]
+        end
+
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.draw(
+            self.spriteSheet,
+            quad,
+            self.pixelX,
+            self.pixelY - 8,
+            0,
+            self.spriteScale,
+            self.spriteScale,
+            self.frameWidth / 2,
+            self.frameHeight / 2
+        )
+    else
+        love.graphics.setColor(1, 0, 0)
+        love.graphics.circle("fill", self.pixelX, self.pixelY, self.radius)
+        love.graphics.setColor(1, 1, 1)
     end
-    
-    love.graphics.setColor(1, 1, 1)
 end
 
 return Enemy
