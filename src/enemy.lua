@@ -21,11 +21,14 @@ function Enemy.new(x, y, maze)
     self.spriteSheet = Renderer.enemy and Renderer.enemy.spritesheet or nil
     self.frameWidth = 32
     self.frameHeight = 32
-    self.spriteScale = (Renderer.enemy and Renderer.enemy.scale) or (ts / self.frameWidth)
+    -- Make bats slightly smaller (80%) of computed scale
+    self.spriteScale = ((Renderer.enemy and Renderer.enemy.scale) or (ts / self.frameWidth)) * 0.8
     self.animFrame = 1 -- 1..3 corresponding to cols 2..4
     self.animTimer = 0
     self.animSpeed = 0.12
     self.isDead = false
+    -- per-enemy damage cooldown to avoid multiple hits when overlapping player
+    self.damageCooldown = 0
 
     self:chooseNewDirection()
     
@@ -201,6 +204,12 @@ function Enemy:update(dt)
     else
         -- dead: stick to frame 1 (col 1)
         self.animFrame = 1
+    end
+
+    -- reduce per-enemy damage cooldown
+    if self.damageCooldown and self.damageCooldown > 0 then
+        self.damageCooldown = self.damageCooldown - dt
+        if self.damageCooldown < 0 then self.damageCooldown = 0 end
     end
 end
 

@@ -1,5 +1,4 @@
--- Player Module
--- Handles player character with grid-based movement and animations
+-- player character with grid-based movement and animations
 
 local TileMapper = require("src.tile_mapper")
 local Renderer = require("src.renderer")
@@ -7,7 +6,7 @@ local Renderer = require("src.renderer")
 local Player = {}
 Player.__index = Player
 
--- Animation configuration for knight.png spritesheet (1-indexed for Lua)
+-- animation configuration for knight.png spritesheet
 local ANIMATIONS = {
     idle = { row = 0, frames = {1, 2, 3, 4, 5}, frameCount = 5, speed = 0.1 },
     run = { row = 1, frames = {1, 2, 3, 4, 5, 6, 7, 8}, frameCount = 8, speed = 0.08 },
@@ -22,12 +21,12 @@ local ANIMATIONS = {
 function Player.new(x, y, maze)
     local self = setmetatable({}, Player)
     
-    -- Use sub-grid coordinates (each tile is 3x3 sub-cells)
-    -- Start at (1,1) within the tile, which is the center and always walkable
-    self.gridX = (x - 1) * 3 + 2  -- Convert tile coords to sub-grid coords, then add 1 for center
-    self.gridY = (y - 1) * 3 + 2  -- This puts player at (1,1) within the 3x3 tile grid
+    -- sub-grid coordinates (each tile is 3x3 sub-cells)
+    -- start at (1,1) within the tile, always walkable
+    self.gridX = (x - 1) * 3 + 2 
+    self.gridY = (y - 1) * 3 + 2  -- put player at (1,1)
     self.maze = maze
-    self.cellSize = 32  -- Each sub-cell is 32x32 pixels (96/3)
+    self.cellSize = 32  -- each sub-cell is 32x32 pixels (96/3)
     
     self.pixelX = (self.gridX - 1) * self.cellSize + self.cellSize / 2
     self.pixelY = (self.gridY - 1) * self.cellSize + self.cellSize / 2
@@ -35,13 +34,13 @@ function Player.new(x, y, maze)
     self.targetGridX = self.gridX
     self.targetGridY = self.gridY
     self.isMoving = false
-    self.moveSpeed = 8  -- Cells per second (faster since cells are smaller)
+    self.moveSpeed = 8  -- cells per second (faster since cells are smaller)
     self.direction = "right"
     
     self.spritesheet = nil
     self.frameWidth = 64  -- knight.png is 512x512, 8x8 grid = 64x64 per frame
     self.frameHeight = 64
-    self.spriteScale = 1.5  -- Scale to make player more visible (64 * 0.75 = 48 pixels)
+    self.spriteScale = 1.5  -- scale to make player more visible (64 * 0.75 = 48 pixels)
     self.currentAnimation = "idle"
     self.currentFrame = 1
     self.animationTimer = 0
@@ -55,7 +54,7 @@ function Player.new(x, y, maze)
     self.damageTimer = 0
     
     self:loadSprite()
-    -- Darkness (radial gradient) presets and shader
+    -- darkness (radial gradient) presets and shader
     self.darknessPresets = {
         { name = "Subtle", innerRadius = 160, outerRadius = 420, exponent = 1.4, alpha = 0.85 },
         { name = "Night",  innerRadius = 120, outerRadius = 320, exponent = 2.2, alpha = 0.98 },
@@ -73,7 +72,6 @@ function Player.new(x, y, maze)
     end
     applyPreset(self.currentDarknessPreset)
 
-    -- key debounce for cycling presets (press 'f' to cycle)
     self._fWasDown = false
     
     return self
@@ -92,12 +90,6 @@ function Player:loadSprite()
         print("ERROR: Could not load player spritesheet: " .. path)
         print("  Using placeholder circle instead")
     end
-end
-
-function Player:loadDarknessShader()
-    -- Shader drawing is handled centrally in main.lua now.
-    -- Kept for API compatibility if code expects this method to exist.
-    return nil
 end
 
 function Player:applyDarknessPreset(idx)
@@ -120,7 +112,7 @@ function Player:cycleDarknessPreset()
 end
 
 function Player:update(dt)
-    -- Handle cycling darkness presets with 'f' (debounced)
+    -- cycling darkness presets with 'f'
     local fDown = love.keyboard.isDown("f")
     if fDown and not self._fWasDown then
         self._fWasDown = true
@@ -206,7 +198,7 @@ function Player:handleInput()
 end
 
 function Player:canMoveTo(gridX, gridY)
-    -- Convert sub-grid coordinates to tile coordinates and sub-cell position
+    -- convert sub-grid coordinates to tile coordinates and sub-cell position
     local tileX = math.floor((gridX - 1) / 3) + 1
     local tileY = math.floor((gridY - 1) / 3) + 1
     local subX = ((gridX - 1) % 3) + 1
@@ -217,7 +209,7 @@ function Player:canMoveTo(gridX, gridY)
     local currentSubX = ((self.gridX - 1) % 3) + 1
     local currentSubY = ((self.gridY - 1) % 3) + 1
     
-    -- Check if within maze bounds
+    -- check if within maze bounds
     if tileX < 1 or tileX > self.maze.width or tileY < 1 or tileY > self.maze.height then
         return false
     end
@@ -229,21 +221,21 @@ function Player:canMoveTo(gridX, gridY)
     
     local direction = self:getDirectionTo(gridX, gridY)
     
-    -- If moving within the same tile, check collision grid
+    -- if moving within the same tile, check collision grid
     if tileX == currentTileX and tileY == currentTileY then
         return targetTile:isWalkable(subX, subY)
     end
     
-    -- If moving to a different tile, check if we can exit current and enter target
+    -- if moving to a different tile, check if-can exit current and enter target
     local currentTile = self.maze.tiles[currentTileY][currentTileX]
     
-    -- Check if we can exit from current sub-cell
+    -- check if-can exit from current sub-cell
     if not currentTile:canExitFrom(currentSubX, currentSubY, direction) then
         return false
     end
     
-    -- Check if target sub-cell is walkable
-    if not targetTile:isWalkable(subX, subY) then
+    -- check if-can enter target sub-cell
+    if not targetTile:canEnterFrom(subX, subY, self:getOppositeDirection(direction)) then
         return false
     end
     
@@ -320,7 +312,8 @@ function Player:takeDamage(amount)
         self.currentAnimation = "damage"
         self.currentFrame = 1
         self.animationTimer = 0
-        self.damageTimer = 0.3
+        -- short invulnerability after taking damage
+        self.damageTimer = 0.8
     end
 end
 
@@ -338,7 +331,12 @@ function Player:updateAnimation(dt)
             if self.animationLoop or self.currentAnimation == "idle" or self.currentAnimation == "run" then
                 self.currentFrame = 1
             else
+                -- Non-looping animation ended; clamp to last frame
                 self.currentFrame = #anim.frames
+                -- If this was the death animation, mark it finished for external logic
+                if self.currentAnimation == "dead" then
+                    self.deathAnimationDone = true
+                end
             end
         end
     end

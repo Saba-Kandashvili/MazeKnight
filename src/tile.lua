@@ -134,6 +134,26 @@ function Tile:canExitFrom(subX, subY, direction)
     return false
 end
 
+-- Check if a sub-cell can be entered from a given direction (fromDirection is where the mover comes from)
+function Tile:canEnterFrom(subX, subY, fromDirection)
+    if not self:isWalkable(subX, subY) then
+        return false
+    end
+
+    -- If entering from north, the entry point should be at the top row (subY == 1)
+    if fromDirection == "north" and subY == 1 then
+        return true
+    elseif fromDirection == "south" and subY == 3 then
+        return true
+    elseif fromDirection == "west" and subX == 1 then
+        return true
+    elseif fromDirection == "east" and subX == 3 then
+        return true
+    end
+
+    return false
+end
+
 -- Debug: Print collision grid
 function Tile:printCollisionGrid()
     print(string.format("Tile (%d,%d) %s rot=%d:", self.x, self.y, self.tileType, self.rotation))
