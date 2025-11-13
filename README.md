@@ -1,6 +1,13 @@
 MazeKnight
 =========
 
+<img width="638" height="572" alt="Screenshot 2025-11-13 225719" src="https://github.com/user-attachments/assets/133fdd10-7f1f-42a9-a457-39e69cfa31cf" />
+
+<img width="619" height="602" alt="Screenshot 2025-11-13 225537" src="https://github.com/user-attachments/assets/4da630b1-b189-40a4-87ee-b94839f55039" />
+
+
+
+
 A small procedural maze explorer I made with LÖVE (Love2D).
 
 **What it is:**
