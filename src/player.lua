@@ -1,4 +1,3 @@
--- player character with grid-based movement and animations
 
 local TileMapper = require("src.tile_mapper")
 local Renderer = require("src.renderer")
@@ -156,6 +155,10 @@ function Player:update(dt)
 end
 
 function Player:handleInput()
+    -- game transition is active, ignore input (pause controls)
+    if _G and _G.game and _G.game.transitioning then
+        return
+    end
     local newGridX = self.gridX
     local newGridY = self.gridY
     local moved = false
@@ -291,6 +294,14 @@ function Player:startAttack()
         self.currentFrame = 1
         self.animationTimer = 0
         self.attackCooldown = ANIMATIONS.attack.speed * #ANIMATIONS.attack.frames
+        -- play alternating attack slash sounds (global helper set in main.lua)
+        if _G and type(_G.playAttackSound) == "function" then
+            pcall(function() _G.playAttackSound() end)
+        end
+        -- perform attack logic (damage enemies in front, up and down)
+        if _G and type(_G.performPlayerAttack) == "function" then
+            pcall(function() _G.performPlayerAttack(self) end)
+        end
     end
 end
 
@@ -331,9 +342,9 @@ function Player:updateAnimation(dt)
             if self.animationLoop or self.currentAnimation == "idle" or self.currentAnimation == "run" then
                 self.currentFrame = 1
             else
-                -- Non-looping animation ended; clamp to last frame
+                -- non-looping animation ended,  clamp to last frame
                 self.currentFrame = #anim.frames
-                -- If this was the death animation, mark it finished for external logic
+                -- if this was the death animation, mark it finished for external logic (dead stay dead)
                 if self.currentAnimation == "dead" then
                     self.deathAnimationDone = true
                 end
@@ -343,7 +354,7 @@ function Player:updateAnimation(dt)
 end
 
 function Player:draw()
-    -- Draw placeholder if no sprite loaded
+    -- draw placeholder if no sprite loaded [for testing these look horrible]
     if not self.spritesheet then
         love.graphics.setColor(0.2, 1.0, 0.3)
         love.graphics.circle("fill", self.pixelX, self.pixelY - 8, 20)
@@ -358,7 +369,6 @@ function Player:draw()
         else
             love.graphics.circle("fill", self.pixelX, self.pixelY, 4)
         end
-        self:drawHealthBar()
     end
     
     local anim = ANIMATIONS[self.currentAnimation]
@@ -396,7 +406,7 @@ function Player:draw()
         love.graphics.setColor(1, 1, 1, 1)
     end
     
-    -- Draw centered on position with small upward offset
+    -- draw centered on position with small upward offset
     love.graphics.draw(
         self.spritesheet,
         quad,
@@ -410,37 +420,14 @@ function Player:draw()
     )
     
     love.graphics.setColor(1, 1, 1, 1)
-    self:drawHealthBar()
 
-    -- Draw a radial darkness overlay centered on the player (skip during overview)
+    -- draw a radial darkness overlay centered on the player (skip during overview)
     if not Renderer.showingOverview then
         local w = love.graphics.getWidth()
         local h = love.graphics.getHeight()
 
-        -- Darkness overlay is handled globally in main.lua; nothing to draw here.
+        -- overlay is handled globally in main.lua. nothing to draw here
     end
-end
-
-function Player:drawHealthBar()
-    local barWidth = 40
-    local barHeight = 4
-    local x = self.pixelX - barWidth / 2
-    local y = self.pixelY - 24
-    
-    love.graphics.setColor(0.2, 0.2, 0.2)
-    love.graphics.rectangle("fill", x, y, barWidth, barHeight)
-    
-    local healthPercent = self.health / 100
-    if healthPercent > 0.6 then
-        love.graphics.setColor(0.2, 0.8, 0.2)
-    elseif healthPercent > 0.3 then
-        love.graphics.setColor(0.8, 0.8, 0.2)
-    else
-        love.graphics.setColor(0.8, 0.2, 0.2)
-    end
-    love.graphics.rectangle("fill", x, y, barWidth * healthPercent, barHeight)
-    
-    love.graphics.setColor(1, 1, 1)
 end
 
 return Player

@@ -1,5 +1,3 @@
--- Maze Generator Module
--- Handles maze generation and processing
 
 local FFIWrapper = require("src.ffi_wrapper")
 local TileMapper = require("src.tile_mapper")
@@ -7,22 +5,22 @@ local Tile = require("src.tile")
 
 local MazeGenerator = {}
 
--- Generate a new maze
+-- generate a new maze
 function MazeGenerator.generate(width, height, seed)
     seed = seed or os.time()
     
     local maxAttempts = 10
-    local minFillPercent = 60  -- At least 60% of tiles should be non-empty
+    local minFillPercent = 60  -- at least 60% of tiles should be non-empty
     
     for attempt = 1, maxAttempts do
         local currentSeed = seed + attempt - 1
         print(string.format("Generating maze: %dx%d (W×H), seed: %d (attempt %d)", width, height, currentSeed, attempt))
         
-        -- Generate using the DLL (single layer for now)
-        -- Parameters: width, height, layers, seed, fullness
+        -- generate using the DLL (single layer)
+        -- width, height, layers, seed, fullness
         local raw_grid = FFIWrapper.generateMaze(width, height, 1, currentSeed, 80)
         
-        -- Count valid tiles (only tiles with valid codes)
+        -- count valid tiles (only tiles with valid codes)
         local validTileCount = 0
         local totalTiles = width * height
         
@@ -38,10 +36,10 @@ function MazeGenerator.generate(width, height, seed)
         local fillPercent = (validTileCount / totalTiles) * 100
         print(string.format("Maze fill: %.1f%% (%d/%d tiles)", fillPercent, validTileCount, totalTiles))
         
-        -- Check if maze is good enough
+        -- check if maze is good enough
         if fillPercent >= minFillPercent then
             print("Maze generation complete!")
-            -- Process the grid into a more usable format
+            -- process the grid into a more usable format
             local processed_grid = MazeGenerator.processGrid(raw_grid[1], width, height)
             return processed_grid
         else
@@ -49,14 +47,14 @@ function MazeGenerator.generate(width, height, seed)
         end
     end
     
-    -- If we get here, all attempts failed - just use the last one
+    -- all attempts failed - just use the last one (I know this is not ideal but theres a problem with my dll and i dotn have time to fix giant C project beofre this assigment is due :'(    )
     print("Warning: Could not generate well-filled maze after " .. maxAttempts .. " attempts, using last attempt")
     local raw_grid = FFIWrapper.generateMaze(width, height, 1, seed + maxAttempts - 1, 80)
     local processed_grid = MazeGenerator.processGrid(raw_grid[1], width, height)
     return processed_grid
 end
 
--- Process raw grid into tile information
+-- process raw grid into tile information
 function MazeGenerator.processGrid(raw_layer, width, height)
     local grid = {}
     local edgeTiles = {
@@ -66,23 +64,23 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         right = {}   -- x == width
     }
     
-    -- First pass: create tile grid and collect valid edge tiles
+    -- first pass: create tile grid and collect valid edge tiles
     for y = 1, height do
         grid[y] = {}
         for x = 1, width do
             local code = raw_layer[y][x]
             
-            -- Treat Special_X_Corridor (2048) as Normal_X_Corridor (1024)
+            -- treat Special_X_Corridor (2048) as Normal_X_Corridor (1024) [speacial X is a connecting tile taht conencts different layers toegther but no use for that in this game sicne its fully 2D]
             if code == 2048 then
                 code = 1024
             end
             
             local tile_info = TileMapper.codeToTile(code)
             
-            -- Create a smart Tile object instead of plain data
+            -- create a Tile object instead of plain data
             grid[y][x] = Tile.new(x, y, tile_info.tileType, tile_info.rotation, code)
             
-            -- Collect valid edge tiles (only tiles with valid codes on edges)
+            -- collect valid edge tiles (only tiles with valid codes on edges)
             if TileMapper.isValidTile(code) then
                 if y == 1 then
                     table.insert(edgeTiles.top, {x = x, y = y, edge = "top"})
@@ -100,7 +98,7 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         end
     end
     
-    -- Collect all valid tiles for fallback (only tiles with valid codes)
+    -- collect all valid tiles for fallback (only tiles with valid codes)
     local allValidTiles = {}
     for y = 1, height do
         for x = 1, width do
@@ -110,7 +108,7 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         end
     end
     
-    -- Helper function to find closest tile to a target edge
+    -- helper function to find closest tile to a target edge
     local function findClosestToEdge(edgeName)
         local closest = nil
         local minDist = math.huge
@@ -118,13 +116,13 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         for _, tile in ipairs(allValidTiles) do
             local dist
             if edgeName == "top" then
-                dist = tile.y  -- Distance from top
+                dist = tile.y  -- distance from top
             elseif edgeName == "bottom" then
-                dist = height - tile.y  -- Distance from bottom
+                dist = height - tile.y  -- distance from bottom
             elseif edgeName == "left" then
-                dist = tile.x  -- Distance from left
+                dist = tile.x  -- distance from left
             elseif edgeName == "right" then
-                dist = width - tile.x  -- Distance from right
+                dist = width - tile.x  -- distance from right
             end
             
             if dist < minDist then
@@ -136,11 +134,11 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         return closest
     end
     
-    -- Pick spawn and goal on opposite edges
+    -- pick spawn and goal on opposite edges
     local spawnTile = nil
     local goalTile = nil
     
-    -- Define opposite edge mapping
+    -- define opposite edge mapping
     local oppositeEdge = {
         top = {name = "bottom", tiles = edgeTiles.bottom},
         bottom = {name = "top", tiles = edgeTiles.top},
@@ -148,7 +146,7 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         right = {name = "left", tiles = edgeTiles.left}
     }
     
-    -- Collect all available edge tiles
+    -- collect all available edge tiles
     local allEdgeTiles = {}
     for edgeName, tiles in pairs(edgeTiles) do
         for _, tile in ipairs(tiles) do
@@ -157,19 +155,19 @@ function MazeGenerator.processGrid(raw_layer, width, height)
     end
     
     if #allEdgeTiles > 0 then
-        -- Randomly pick spawn from any edge
+        -- randomly pick spawn from any edge
         local randomIndex = math.random(1, #allEdgeTiles)
         spawnTile = allEdgeTiles[randomIndex]
         
-        -- Get opposite edge
+        -- get opposite edge
         local opposite = oppositeEdge[spawnTile.edge]
         
         if #opposite.tiles > 0 then
-            -- Randomly pick goal from opposite edge
+            -- randomly pick goal from opposite edge
             local randomGoalIndex = math.random(1, #opposite.tiles)
             goalTile = opposite.tiles[randomGoalIndex]
         else
-            -- No valid tiles on opposite edge, find closest to that edge
+            -- no valid tiles on opposite edge, find closest to that edge
             goalTile = findClosestToEdge(opposite.name)
         end
     end
@@ -185,8 +183,8 @@ function MazeGenerator.processGrid(raw_layer, width, height)
         width = width,
         height = height,
         tiles = grid,
-        spawnTile = spawnTile,  -- Red tile
-        goalTile = goalTile     -- Green tile
+        spawnTile = spawnTile,  -- red tile TODO: remove this red/green stuff, it was usied for testing only
+        goalTile = goalTile     -- green tile
     }
 end
 

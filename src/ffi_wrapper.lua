@@ -12,14 +12,34 @@ ffi.cdef[[
 
 local FFIWrapper = {}
 
--- load the DLL
-local dll_name = "lib/libWFC.dll"
-local success, dll = pcall(function()
-    return ffi.load(dll_name)
-end)
+-- load the native library
+local candidates = {}
+if ffi.os == "Windows" then
+    candidates = { "lib/libWFC.dll", "libWFC.dll", "./libWFC.dll" }
+elseif ffi.os == "Linux" then
+    candidates = { "lib/libWFC.so", "libWFC.so", "./libWFC.so" }
+else
+    -- meh .so seems to work on anywhere
+    candidates = { "lib/libWFC.so", "libWFC.so", "./libWFC.so" }
+end
 
-if not success then
-    error("Failed to load DLL: " .. dll_name .. "\nError: " .. tostring(dll))
+local dll = nil
+local lastErr = nil
+local tried = {}
+for _, name in ipairs(candidates) do
+    table.insert(tried, name)
+    local ok, libOrErr = pcall(function() return ffi.load(name) end)
+    if ok and libOrErr then
+        dll = libOrErr
+        print("Loaded native library: " .. name)
+        break
+    else
+        lastErr = libOrErr
+    end
+end
+
+if not dll then
+    error("Failed to load native library. Tried: " .. table.concat(tried, ", ") .. "\nLast error: " .. tostring(lastErr))
 end
 
 FFIWrapper.dll = dll

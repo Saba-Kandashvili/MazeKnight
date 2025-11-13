@@ -1,24 +1,24 @@
--- MazeKnight - Main Game File
--- A procedural maze explorer using Wave Function Collapse
+-- MazeKnight
+-- a procedural maze explorer using my implementation of Wave Function Collapse
 
 local MazeGenerator = require("src.maze_generator")
 local Renderer = require("src.renderer")
 local Enemy = require("src.enemy")
 local Player = require("src.player")
 
--- Simple logger: writes to stdout (if available) and appends to `game.log` for troubleshooting
+--writes to stdout (if available) and appends to `game.log` for troubleshooting
 local function log(...)
     local parts = {}
     for i = 1, select('#', ...) do
         parts[#parts+1] = tostring(select(i, ...))
     end
     local line = table.concat(parts, " ")
-    -- Try stdout (may not be visible if running without console)
+    -- try stdout (may not be visible if running without console)
     pcall(function()
         io.stdout:write(line .. "\n")
         io.stdout:flush()
     end)
-    -- Append to log file so output is always available
+    -- append to log file so output is always available
     pcall(function()
         local f = io.open("game.log", "a")
         if f then
@@ -28,31 +28,31 @@ local function log(...)
     end)
 end
 
--- Game state
+-- state
 local game = {
     maze = nil,
     seed = nil,
-    mazeWidth = 10,
-    mazeHeight = 10,
-    debug = true,
+    mazeWidth = 15,
+    mazeHeight = 15,
+    debug = false,
     enemies = {},
     player = nil,
     showingMazeOverview = false,
-    savedCamera = { x = 0, y = 0, scale = 1 },  -- Store camera state when showing overview
-    finishTileX = nil,  -- Finish tile coordinates
+    savedCamera = { x = 0, y = 0, scale = 1 },  -- store camera state when showing overview
+    finishTileX = nil,  -- finish tile coordinates
     finishTileY = nil,
-    -- Level transition
+    -- level transition
     transitioning = false,
     transitionAlpha = 0,
     transitionState = "none",  -- "none", "fade_out", "fade_in"
-    transitionSpeed = 2.0,  -- How fast the fade happens
+    transitionSpeed = 2.0,  -- how fast the fade happens
     currentLevel = 1,
-    -- Darkness/Vision settings
-    visionRadius = 200,  -- Radius in pixels of the visible area around player
-    darknessAlpha = 0.85  -- How dark the fog is (0 = invisible, 1 = completely black)
+    -- darkness/vision settings
+    visionRadius = 200,  -- radius in pixels of the visible area around player
+    darknessAlpha = 0.85  -- how dark the fog is (0 = invisible, 1 = completely black)
 }
 
--- Safe volume-set helper (file-scope) so update/draw can call it
+-- asfe volume-set helper (file-scope) so update/draw can call it
 local function setSrcVolume(label, src, v)
     if not src then
         log(string.format("[vol] %s: source missing, cannot set volume to %.2f", label, tonumber(v) or 0))
@@ -62,7 +62,7 @@ local function setSrcVolume(label, src, v)
     if not ok then
         log(string.format("[vol] %s: setVolume failed: %s", label, tostring(err)))
     end
-    -- Log the attempt (this will show repeated fades)
+    -- log the attempt (this will show repeated fades) [this drove me crazy too]
     log(string.format("[vol] %s: setVolume=%.2f src=%s", label, tonumber(v) or 0, tostring(src)))
 end
 
@@ -70,18 +70,29 @@ function love.load()
     print("=== MazeKnight Starting ===")
     print("Love2D Version: " .. love.getVersion())
     
-    -- Open console on Windows for debugging
+    -- open console on Windows for debugging
     if love.system.getOS() == "Windows" then
         io.stdout:setvbuf("no")
     end
     
-    -- Set up graphics
+    -- set up graphics
     love.graphics.setBackgroundColor(0.05, 0.05, 0.05)
-    love.graphics.setDefaultFilter("nearest", "nearest")  -- Pixel art style
+    love.graphics.setDefaultFilter("nearest", "nearest")  -- pixel art style (not really but meh)
+
+    -- prepare fonts for death screen and HUD
+    game.fonts = game.fonts or {}
+    do
+        local okd, fdl = pcall(love.graphics.newFont, 64)
+        if okd and fdl then game.fonts.deathLarge = fdl end
+        local oks, fsm = pcall(love.graphics.newFont, 18)
+        if oks and fsm then game.fonts.deathSmall = fsm end
+        local okl, flv = pcall(love.graphics.newFont, 14)
+        if okl and flv then game.fonts.level = flv end
+        game.fonts.default = love.graphics.getFont()
+    end
     
-    -- Initialize renderer
     Renderer.init()
-    -- Create global darkness shader (used for gradient overlay)
+    -- create global darkness shader (gradient overlay)
     do
         local ok, shader = pcall(function()
             return love.graphics.newShader([[
@@ -114,10 +125,13 @@ function love.load()
         end
     end
     
-    -- Generate initial maze
+    -- generate initial maze
     generateNewMaze()
+
+    -- make game state accessible to other modules (for input/transition checks)
+    _G.game = game
     
-    -- Load damage and death sounds for player feedback
+    -- load damage and death sounds
     game.sounds = game.sounds or {}
     game.sounds.damage = {}
     do
@@ -137,15 +151,130 @@ function love.load()
     end
     log("death_intro=", tostring(game.sounds.death_intro ~= nil), " death_bells=", tostring(game.sounds.death_bells ~= nil))
 
+    -- door sound (looping) for finish tile proximity
+    do
+        local okd, doorSrc = pcall(love.audio.newSource, "assets/audio/door/door.wav", "static")
+        if okd and doorSrc then
+            game.sounds.door = doorSrc
+            pcall(function() doorSrc:setLooping(true) end)
+            -- start silent
+            pcall(function() setSrcVolume("door", doorSrc, 0) end)
+        else
+            game.sounds.door = nil
+        end
+    end
+
+    -- slash sounds and prepare alternating playback
+    game.sounds.attack = {}
+    do
+        local ok1, a1 = pcall(love.audio.newSource, "assets/audio/attack/slash_1.wav", "static")
+        local ok2, a2 = pcall(love.audio.newSource, "assets/audio/attack/slash_2.wav", "static")
+        if ok1 and a1 then table.insert(game.sounds.attack, a1) end
+        if ok2 and a2 then table.insert(game.sounds.attack, a2) end
+    end
+    game.nextAttackSoundIndex = 1
+    log("Loaded attack sounds, count=", #game.sounds.attack)
+
+    for i, src in ipairs(game.sounds.attack) do
+        pcall(function()
+            setSrcVolume("attack_" .. tostring(i), src, 0.5)
+        end)
+    end
+
+    _G.playAttackSound = function()
+        if not game.sounds or not game.sounds.attack or #game.sounds.attack == 0 then return end
+        local idx = game.nextAttackSoundIndex or 1
+        local src = game.sounds.attack[idx]
+        if src then
+            pcall(function()
+                src:stop()
+                src:play()
+            end)
+        end
+        -- advance index (wrap)
+        game.nextAttackSoundIndex = (idx % #game.sounds.attack) + 1
+    end
+
+    -- load ambient atmosphere sounds
+    game.sounds.ambient = {}
+    do
+        local ok1, a1 = pcall(love.audio.newSource, "assets/audio/ambient/amb_1.wav", "static")
+        local ok2, a2 = pcall(love.audio.newSource, "assets/audio/ambient/amb_2.wav", "static")
+        local ok3, a3 = pcall(love.audio.newSource, "assets/audio/ambient/amb_3.wav", "static")
+        local ok4, a4 = pcall(love.audio.newSource, "assets/audio/ambient/amb_4.wav", "static")
+        local ok5, a5 = pcall(love.audio.newSource, "assets/audio/ambient/amb_5.wav", "static")
+        if ok1 and a1 then table.insert(game.sounds.ambient, a1) end
+        if ok2 and a2 then table.insert(game.sounds.ambient, a2) end
+        if ok3 and a3 then table.insert(game.sounds.ambient, a3) end
+        if ok4 and a4 then table.insert(game.sounds.ambient, a4) end
+        if ok5 and a5 then table.insert(game.sounds.ambient, a5) end
+    end
+    -- very low ambient volume
+    game.ambient = { minInterval = 10, maxInterval = 30, volume = 0.18 }
+    for i, src in ipairs(game.sounds.ambient) do
+        pcall(function() setSrcVolume("ambient_" .. tostring(i), src, game.ambient.volume) end)
+        pcall(function() src:setLooping(false) end)
+    end
+    -- schedule first ambient event a little randomized after load
+    game.nextAmbientTime = love.timer.getTime() + game.ambient.minInterval + (math.random() * (game.ambient.maxInterval - game.ambient.minInterval))
+
+    -- attack forward up and down
+    _G.performPlayerAttack = function(player)
+        if not player or not game or not game.enemies then return end
+        local attackRange = 64 -- pixels
+
+        local px, py = player.pixelX, player.pixelY
+
+        -- facing vector
+        local fx, fy = 0, 0
+        if player.direction == "right" then fx, fy = 1, 0
+        elseif player.direction == "left" then fx, fy = -1, 0
+        elseif player.direction == "up" then fx, fy = 0, -1
+        elseif player.direction == "down" then fx, fy = 0, 1
+        end
+
+        for _, enemy in ipairs(game.enemies) do
+            if enemy and not enemy.isDead then
+                local ex, ey = enemy.pixelX, enemy.pixelY
+                local dx = ex - px
+                local dy = ey - py
+                local dist2 = dx*dx + dy*dy
+                if dist2 <= (attackRange * attackRange) then
+                    local dist = math.sqrt(dist2)
+                    -- if player has no facing, treat as full radial (idk how thi would happen)
+                    if fx == 0 and fy == 0 then
+                        -- hit
+                        enemy.isDead = true
+                        enemy.direction = nil
+                        enemy.speed = 0
+                        enemy.damageCooldown = 9999
+                    else
+                        -- normalized vector to enemy
+                        local nx, ny = dx / dist, dy / dist
+                        -- dot product between facing and enemy direction
+                        local dot = nx * fx + ny * fy
+                        -- dot >= 0 means enemy is in front hemisphere (<= 90deg). hit those.
+                        if dot >= 0 then
+                            enemy.isDead = true
+                            enemy.direction = nil
+                            enemy.speed = 0
+                            enemy.damageCooldown = 9999
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     
 
-    -- Damage flash timer (screen red flash when player hurt)
+    -- screen red flash when player hurt
     game.damageFlash = 0
     game.damageFlashDuration = 0.22
 
-    -- Time scale for slow-motion effects (1.0 = normal)
+    -- time scale for slow-motion effects
     game.timeScale = 1.0
-    -- Death sequence state
+    -- death sequence state
     game.deathSeq = { active = false, phase = nil, timer = 0, fade = 0, textAlpha = 0 }
     
     print("=== Game Loaded ===")
@@ -160,26 +289,27 @@ function love.load()
 end
 
 
+
 function generateNewMaze()
-    -- Use high-resolution time to ensure unique seeds even when called rapidly
-    game.seed = math.floor(love.timer.getTime() * 1000)  -- Milliseconds since start
+    -- use high-resolution time to ensure unique seeds even when called rapidly
+    game.seed = math.floor(love.timer.getTime() * 1000)  -- milliseconds since start | this maybe oevrkill but meh
     print("\n--- Generating new maze ---")
     
-    -- Generate maze using the DLL
+    -- maze using the DLL/SO
     game.maze = MazeGenerator.generate(game.mazeWidth, game.mazeHeight, game.seed)
     
-    -- Find crossroads near the edges for player spawn
+    -- find X near the edges for player spawn
     local TileMapper = require("src.tile_mapper")
     local PF = TileMapper.PrefabCodes
     local edgeCrossroads = {}
-    local edgeThreshold = 3  -- How far from edge to consider "near edge"
+    local edgeThreshold = 3  -- "near edge"
     
     for y = 1, game.maze.height do
         for x = 1, game.maze.width do
             local tile = game.maze.tiles[y][x]
-            -- Check if it's a crossroad (Normal_X_Corridor or Special_X_Corridor)
+            -- if it's a crossroad (Normal_X_Corridor or Special_X_Corridor)
             if tile.code == PF.Normal_X_Corridor or tile.code == PF.Special_X_Corridor then
-                -- Check if near any edge
+                -- if near any edge
                 local nearEdge = (x <= edgeThreshold or x > game.maze.width - edgeThreshold or
                                  y <= edgeThreshold or y > game.maze.height - edgeThreshold)
                 if nearEdge then
@@ -189,7 +319,7 @@ function generateNewMaze()
         end
     end
     
-    -- Create player at random edge crossroad (or fallback to any valid tile)
+    -- create player at random edge crossroad (or fallback to any valid tile)
     local playerSpawnX, playerSpawnY = nil, nil
     if #edgeCrossroads > 0 then
         local spawnTile = edgeCrossroads[math.random(1, #edgeCrossroads)]
@@ -197,7 +327,7 @@ function generateNewMaze()
         playerSpawnY = spawnTile.y
         print(string.format("Player spawned at edge crossroad (%d, %d)", playerSpawnX, playerSpawnY))
     else
-        -- Fallback: find any valid tile
+        -- fallback: find any valid tile
         for y = 1, game.maze.height do
             for x = 1, game.maze.width do
                 local tile = game.maze.tiles[y][x]
@@ -212,40 +342,40 @@ function generateNewMaze()
         print(string.format("Player spawned at fallback position (%d, %d)", playerSpawnX, playerSpawnY))
     end
     
-    -- Create player and mark spawn tile
+    -- create player and mark spawn tile
     if playerSpawnX then
         game.player = Player.new(playerSpawnX, playerSpawnY, game.maze)
-        -- Mark the spawn tile so it renders with S.png instead of X.png
+        -- mark the spawn tile so it renders with S.png instead of X.png
         game.maze.tiles[playerSpawnY][playerSpawnX].isSpawn = true
         
-        -- Find finish tile at opposite edge from spawn
-        -- Determine which edge the spawn is on and calculate center point of opposite edge
+        -- find finish tile at opposite edge from spawn
+        -- determine which edge the spawn is on and calculate center point of opposite edge
         local spawnOnLeft = playerSpawnX <= edgeThreshold
         local spawnOnRight = playerSpawnX > game.maze.width - edgeThreshold
         local spawnOnTop = playerSpawnY <= edgeThreshold
         local spawnOnBottom = playerSpawnY > game.maze.height - edgeThreshold
         
-        -- Determine target edge position
+        -- determine target edge position
         local targetX, targetY
         if spawnOnLeft then
-            targetX = game.maze.width  -- Right edge
+            targetX = game.maze.width  
             targetY = game.maze.height / 2
         elseif spawnOnRight then
-            targetX = 1  -- Left edge
+            targetX = 1
             targetY = game.maze.height / 2
         elseif spawnOnTop then
             targetX = game.maze.width / 2
-            targetY = game.maze.height  -- Bottom edge
+            targetY = game.maze.height  
         elseif spawnOnBottom then
             targetX = game.maze.width / 2
-            targetY = 1  -- Top edge
+            targetY = 1  
         else
-            -- Spawn in middle, choose any edge
+            -- spawn in middle, choose any edge
             targetX = game.maze.width
             targetY = game.maze.height / 2
         end
         
-        -- Find all crossroads and choose the one closest to the target edge position
+        -- find all crossroads and choose the one closest to the target edge position
         local allCrossroads = {}
         for y = 1, game.maze.height do
             for x = 1, game.maze.width do
@@ -257,8 +387,7 @@ function generateNewMaze()
                 end
             end
         end
-        
-        -- Choose the crossroad closest to the target edge position
+        -- choose the crossroad closest to the target edge position
         if #allCrossroads > 0 then
             table.sort(allCrossroads, function(a, b) return a.distance < b.distance end)
             local finishTile = allCrossroads[1]
@@ -272,11 +401,9 @@ function generateNewMaze()
         end
     end
     
-    -- Spawn enemies at random valid tiles
+    -- spawn enemies at random valid tiles
     game.enemies = {}
-    local numEnemies = 3  -- Spawn 3 enemies
-    
-    -- Find all valid tiles for spawning
+    -- find all valid tiles for spawning
     local validSpawnTiles = {}
     for y = 1, game.maze.height do
         for x = 1, game.maze.width do
@@ -286,20 +413,45 @@ function generateNewMaze()
             end
         end
     end
+
+    -- filter spawn tiles: avoid player's immediate area and special tiles (spawn/finish)
+    local minSpawnDistance = 3 -- in tiles (exclude tiles within this radius from player spawn)
+    local filteredSpawnTiles = {}
+    for _, t in ipairs(validSpawnTiles) do
+        -- skip spawn and finish tiles explicitly
+        local tileObj = game.maze.tiles[t.y][t.x]
+        if not (tileObj.isSpawn or tileObj.isFinish) then
+            if playerSpawnX and playerSpawnY then
+                local dx = t.x - playerSpawnX
+                local dy = t.y - playerSpawnY
+                local dist = math.sqrt(dx*dx + dy*dy)
+                if dist > minSpawnDistance then
+                    table.insert(filteredSpawnTiles, t)
+                end
+            else
+                table.insert(filteredSpawnTiles, t)
+            end
+        end
+    end
+
+    local baseEnemies = 4
+    local perLevelIncrease = 3
+    local desired = baseEnemies + math.floor(((game.currentLevel or 1) - 1) * perLevelIncrease)
+    local numEnemies = math.min(desired, #filteredSpawnTiles)
     
-    -- Spawn enemies at random locations
-    for i = 1, math.min(numEnemies, #validSpawnTiles) do
-        local spawnTile = validSpawnTiles[math.random(1, #validSpawnTiles)]
+    -- spawn enemies at random locations
+    for i = 1, math.min(numEnemies, #filteredSpawnTiles) do
+        local spawnTile = filteredSpawnTiles[math.random(1, #filteredSpawnTiles)]
         local enemy = Enemy.new(spawnTile.x, spawnTile.y, game.maze)
         table.insert(game.enemies, enemy)
     end
     
     print(string.format("Spawned %d enemies", #game.enemies))
     
-    -- Set camera to follow player instead of fitting maze to screen
+    -- set camera to follow player instead of fitting maze to screen
     if game.player then
         local screenWidth, screenHeight = love.graphics.getDimensions()
-        Renderer.camera.scale = 0.8  -- Good zoom level for gameplay
+        Renderer.camera.scale = 0.8  -- good zoom level for gameplay... jsut realised my agem might not look sme for different resolutions... MEH
         Renderer.camera.x = game.player.pixelX - screenWidth / (2 * Renderer.camera.scale)
         Renderer.camera.y = game.player.pixelY - screenHeight / (2 * Renderer.camera.scale)
     end
@@ -308,36 +460,38 @@ function generateNewMaze()
 end
 
 function love.update(dt)
-    -- Apply global time scale for slow-motion effects
+    -- apply global time scale for slow-motion effects cause DRAMA
     local timeScale = game.timeScale or 1.0
     local scaledDt = dt * timeScale
 
-    -- Update player (use scaled dt so animations/movement slow during sequences)
     if game.player then
         game.player:update(scaledDt)
         
-        -- Check if player reached finish tile center (1,1)
+        --  if player reached finish tile center (1,1)
         if game.finishTileX and game.finishTileY and not game.transitioning then
-            local finishSubX = (game.finishTileX - 1) * 3 + 2  -- Center of finish tile in sub-grid (1,1 = index 2)
+            local finishSubX = (game.finishTileX - 1) * 3 + 2  -- center of finish tile in sub-grid (1,1 = index 2)
             local finishSubY = (game.finishTileY - 1) * 3 + 2
             
             if game.player.gridX == finishSubX and game.player.gridY == finishSubY then
                 print(string.format("\n=== LEVEL %d COMPLETE! ===", game.currentLevel))
                 print(string.format("Player at (%d, %d), Finish at (%d, %d)", 
                     game.player.gridX, game.player.gridY, finishSubX, finishSubY))
+                -- begin level transition and pause gameplay time so player/enemies freeze
                 game.transitioning = true
                 game.transitionState = "fade_out"
                 game.transitionAlpha = 0
+                -- pause gameplay by zeroing timeScale (love.update still runs transitions using raw dt)
+                game.timeScale = 0
             end
         end
         
-        -- Handle level transition
+        -- level transition
         if game.transitioning then
             if game.transitionState == "fade_out" then
                 game.transitionAlpha = game.transitionAlpha + (dt * game.transitionSpeed)
                 if game.transitionAlpha >= 1 then
                     game.transitionAlpha = 1
-                    -- Screen is fully black, generate new level
+                    -- screen is fully black, generate new level
                     game.currentLevel = game.currentLevel + 1
                     print(string.format("Generating Level %d...", game.currentLevel))
                     generateNewMaze()
@@ -349,32 +503,35 @@ function love.update(dt)
                     game.transitionAlpha = 0
                     game.transitioning = false
                     game.transitionState = "none"
+                    -- resume gameplay time
+                    game.timeScale = 1.0
                     print("Transition complete!\n")
                 end
             end
         end
         
-        -- Debug mode: Show entire maze when backspace is held
+        -- I'll be honest, this is a sloppy implemetation but works for 15x15 mazes so meh
+        -- DEBUG: show entire maze when backspace is held
         if game.debug and love.keyboard.isDown("backspace") then
             if not game.showingMazeOverview then
-                -- Save current camera state
+                -- save current camera state
                 game.savedCamera.x = Renderer.camera.x
                 game.savedCamera.y = Renderer.camera.y
                 game.savedCamera.scale = Renderer.camera.scale
                 game.showingMazeOverview = true
                     Renderer.showingOverview = true
                 
-                -- Calculate scale to fit entire maze
+                -- calculate scale to fit entire maze
                 local screenWidth, screenHeight = love.graphics.getDimensions()
                 local mazePixelWidth = game.maze.width * Renderer.tileSize
                 local mazePixelHeight = game.maze.height * Renderer.tileSize
                 
-                -- Calculate scale to fit the entire maze with padding
+                -- calculate scale to fit the entire maze with padding
                 local scaleX = screenWidth / mazePixelWidth
                 local scaleY = screenHeight / mazePixelHeight
-                Renderer.camera.scale = math.min(scaleX, scaleY) * 0.95  -- 0.95 for some padding
+                Renderer.camera.scale = math.min(scaleX, scaleY) * 0.95
                 
-                -- Position camera so (0,0) of maze is visible and maze is centered
+                -- position camera so (0,0) of maze is visible and maze is centered
                 local scaledScreenWidth = screenWidth / Renderer.camera.scale
                 local scaledScreenHeight = screenHeight / Renderer.camera.scale
                 Renderer.camera.x = -(scaledScreenWidth - mazePixelWidth) / 2
@@ -382,7 +539,7 @@ function love.update(dt)
             end
         else
             if game.showingMazeOverview then
-                -- Restore camera to follow player
+                -- restore camera to follow player
                 Renderer.camera.x = game.savedCamera.x
                 Renderer.camera.y = game.savedCamera.y
                 Renderer.camera.scale = game.savedCamera.scale
@@ -392,12 +549,12 @@ function love.update(dt)
         end
     end
     
-    -- Update enemies (use scaled dt)
+    -- update enemies (scaled dt)
     for _, enemy in ipairs(game.enemies) do
         enemy:update(scaledDt)
     end
 
-    -- Check collisions between enemies and player (simple proximity check)
+    -- check collisions between enemies and player
     if game.player then
         for _, enemy in ipairs(game.enemies) do
             if not game.player.isDead and not game.player.isTakingDamage then
@@ -406,10 +563,10 @@ function love.update(dt)
                 local dist = math.sqrt(dx*dx + dy*dy)
                 local hitThreshold = (enemy.radius or 12) + 12
                 if dist <= hitThreshold and (not enemy.damageCooldown or enemy.damageCooldown <= 0) then
-                    -- Apply damage: 20 (20% of 100)
+                    -- apply damage: 20
                     game.player:takeDamage(20)
 
-                    -- Start damage flash and play random damage sound
+                    -- start damage flash and play random damage sound
                     game.damageFlash = game.damageFlashDuration
                     if game.sounds and game.sounds.damage and #game.sounds.damage > 0 then
                         local idx = math.random(1, #game.sounds.damage)
@@ -420,24 +577,25 @@ function love.update(dt)
                         end
                     end
 
-                    -- Give this enemy a short cooldown so it doesn't hit repeatedly while overlapping
+                    -- give this enemy a short cooldown so it doesn't hit repeatedly while overlapping
                     enemy.damageCooldown = 0.48
                 end
             end
         end
     end
 
-    -- Decrease damage flash timer
+    -- decrease damage flash timer
     if game.damageFlash and game.damageFlash > 0 then
         game.damageFlash = game.damageFlash - dt
         if game.damageFlash < 0 then game.damageFlash = 0 end
     end
 
-    -- Death sequence handling (real-time dt)
+    -- had to log everything cause it was drivign me crazy
+    -- death sequence handling (real-time dt)
     if game.player and game.player.isDead then
         local ds = game.deathSeq
         if not ds.active then
-                -- Start death sequence: slow down time, zoom camera, play intro
+                -- start death sequence: slow down time, zoom camera, play intro | will make a grown man cry :'( 
                 ds.active = true
                 log("[death] sequence started")
                 ds.phase = "slowdown"
@@ -450,14 +608,12 @@ function love.update(dt)
                 ds.textAlpha = 0
                 ds.fadeDuration = 1.0
                 ds.textFadeDuration = 2.0
-                -- Audio intro control: get duration & fade settings
                 ds.introFadeIn = 0.5
                 ds.introFadeOut = 0.6
                 if game.sounds and game.sounds.death_intro then
                     local src = game.sounds.death_intro
                     local ok, dur = pcall(function() return src:getDuration() end)
                     ds.introDuration = (ok and dur) or 2.0
-                    -- start intro with volume 0 and play
                     setSrcVolume("death_intro", src, 0)
                     src:stop()
                     src:play()
@@ -484,10 +640,10 @@ function love.update(dt)
                         local v = math.max(0, math.min(1, ds.timer / ds.introFadeIn))
                         setSrcVolume("death_intro", src, v)
                     end
-                    -- (no fade-out here; the intro file contains its own fade-out)
+                    -- (intro file contains its own fade-out)
                 end
 
-                -- When both death animation and intro finish, proceed to fade
+                -- when both death animation and intro finish, proceed to fade
                 local introDone = true
                 if ds.introPlaying and game.sounds and game.sounds.death_intro then
                     local ok, playing = pcall(function() return game.sounds.death_intro:isPlaying() end)
@@ -510,14 +666,14 @@ function love.update(dt)
                         pcall(function() src:stop() end)
                         ds.introPlaying = false
                     end
-
-                    -- Start death_bells immediately as fade begins (with fade-in)
+                    -- DEATH IS CALLING WILL YOU ANSWER? 
+                    -- start death_bells immediately as fade begins (with fade-in)
                     if game.sounds and game.sounds.death_bells then
                         local bell = game.sounds.death_bells
                         local ok, err = pcall(function()
                             bell:stop()
                             bell:setLooping(false)
-                            -- Start bells immediately at full volume (play once)
+                            -- Start bells immediately at full volume (DRAMA 100)
                             setSrcVolume("death_bells", bell, 1)
                             bell:play()
                         end)
@@ -545,7 +701,7 @@ function love.update(dt)
                 if ds.fade >= 1 then
                     ds.phase = "text_fade"
                     ds.timer = 0
-                    -- Stop intro if still playing
+                    -- stop intro if still playing
                     if ds.introPlaying and game.sounds and game.sounds.death_intro then
                         local src = game.sounds.death_intro
                         src:stop()
@@ -554,7 +710,7 @@ function love.update(dt)
                     -- death_bells already started when fade began; do not restart here
                 end
 
-                -- Bells are started at full volume; no per-frame fade applied here.
+                -- bells are started at full volume; no per-frame fade applied here.
 
             elseif ds.phase == "text_fade" then
                 ds.timer = ds.timer + dt
@@ -566,7 +722,6 @@ function love.update(dt)
         end
     end
     
-    -- Zoom controls (+ and -) - disabled during overview
     if not game.showingMazeOverview then
         if love.keyboard.isDown("=") or love.keyboard.isDown("+") then
             Renderer.camera.scale = Renderer.camera.scale * (1 + dt)
@@ -576,10 +731,67 @@ function love.update(dt)
             if Renderer.camera.scale < 0.1 then Renderer.camera.scale = 0.1 end
         end
     end
+
+        -- ambient sound scheduler (play quiet ambience occasionally, min interval enforced)
+        if game.sounds and game.sounds.ambient and #game.sounds.ambient > 0 then
+            local now = love.timer.getTime()
+            if not game.nextAmbientTime then
+                game.nextAmbientTime = now + (game.ambient and game.ambient.minInterval or 10)
+            end
+            if now >= game.nextAmbientTime then
+                -- pick a random ambient sample and play it quietly
+                local idx = math.random(1, #game.sounds.ambient)
+                local src = game.sounds.ambient[idx]
+                if src then
+                    pcall(function()
+                        src:stop()
+                        if game.ambient and game.ambient.volume then setSrcVolume("ambient_" .. tostring(idx), src, game.ambient.volume) end
+                        src:setLooping(false)
+                        src:play()
+                    end)
+                end
+                -- schedule next ambient: at least minInterval later, up to maxInterval
+                local minI = (game.ambient and game.ambient.minInterval) or 10
+                local maxI = (game.ambient and game.ambient.maxInterval) or 30
+                local interval = minI + math.random() * (math.max(0, maxI - minI))
+                game.nextAmbientTime = now + interval
+            end
+        end
+
+        -- door proximity: loop door sound when player is within visible radius of finish tile
+        if game.sounds and game.sounds.door and game.finishTileX and game.finishTileY and game.player then
+            local ts = Renderer.tileSize or 96
+            local fx = (game.finishTileX - 1) * ts + ts / 2
+            local fy = (game.finishTileY - 1) * ts + ts / 2
+            local dx = fx - game.player.pixelX
+            local dy = fy - game.player.pixelY
+            local dist = math.sqrt(dx*dx + dy*dy)
+            local visibleRadius = (game.player.darkness and game.player.darkness.innerRadius) or game.visionRadius or 200
+            -- trigger a bit further away than the visible inner radius so player can hear the door earlier
+            local triggerMultiplier = 1.35
+            local triggerRadius = visibleRadius * triggerMultiplier
+            local src = game.sounds.door
+            if dist <= triggerRadius then
+                -- player within audible trigger radius: ensure playing and set volume proportional to closeness
+                local maxVol = 0.45 -- cap so it's not too loud
+                local vol = maxVol * (1 - (dist / triggerRadius))
+                if vol < 0.01 then vol = 0.01 end
+                pcall(function() setSrcVolume("door", src, vol) end)
+                local ok, playing = pcall(function() return src:isPlaying() end)
+                if not (ok and playing) then
+                    pcall(function() src:stop(); src:play() end)
+                end
+            else
+                local ok, playing = pcall(function() return src:isPlaying() end)
+                if ok and playing then
+                    pcall(function() setSrcVolume("door", src, 0); src:stop() end)
+                end
+            end
+        end
 end
 
 function love.draw()
-    -- Always center camera on player before drawing (unless showing overview)
+    -- always center camera on player before drawing unless showing overview
     if game.player and not game.showingMazeOverview then
         local screenWidth = love.graphics.getWidth()
         local screenHeight = love.graphics.getHeight()
@@ -587,26 +799,26 @@ function love.draw()
         Renderer.camera.y = game.player.pixelY - (screenHeight / (2 * Renderer.camera.scale))
     end
     
-    -- Draw the maze and enemies
+    -- draw the maze and enemies
     Renderer.drawMaze(game.maze, game.enemies, game.player)
     
-    -- Draw fade transition overlay
+    -- draw fade transition overlay
     if game.transitioning and game.transitionAlpha > 0 then
         love.graphics.setColor(0, 0, 0, game.transitionAlpha)
         love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
         love.graphics.setColor(1, 1, 1)
     end
     
-    -- Draw darkness overlay centered on screen center (which is where player is because camera is centered)
+    -- draw darkness overlay centered on screen center (which is where player is because camera is centered)
     if game.player and not game.showingMazeOverview then
         local screenWidth = love.graphics.getWidth()
         local screenHeight = love.graphics.getHeight()
 
-        -- Player is ALWAYS at screen center because camera is centered on player
+        -- player is ALWAYS at screen center because camera is centered on player
         local playerScreenX = screenWidth / 2
         local playerScreenY = screenHeight / 2
 
-        -- If global shader available, use gradient overlay; otherwise fallback to stencil circle
+        -- if global shader available use gradient overlay otherwise fallback to stencil circle
         if game.darknessShader then
             local inner = (game.player.darkness and game.player.darkness.innerRadius or game.visionRadius) * Renderer.camera.scale
             local outer = (game.player.darkness and game.player.darkness.outerRadius or (game.visionRadius * 2)) * Renderer.camera.scale
@@ -625,7 +837,7 @@ function love.draw()
             love.graphics.setShader()
             love.graphics.setColor(1, 1, 1)
         else
-            -- Fallback: stencil-based circle (older behavior)
+            -- fallback: stencil-based circle
             love.graphics.stencil(function()
                 love.graphics.circle("fill", playerScreenX, playerScreenY, game.visionRadius, 128)
             end, "replace", 1)
@@ -637,22 +849,20 @@ function love.draw()
         end
     end
     
-    -- (debug overlay moved to draw last so it remains visible over death screens)
 
-    -- Draw large bottom health bar for player
+    -- draw large bottom health bar for player
     if game.player then
         local sw, sh = love.graphics.getDimensions()
-        -- Make the bar a bit smaller: 75% width and slightly shorter height
         local barW = sw * 0.75
         local barH = 28
         local barX = (sw - barW) / 2
         local barY = sh - barH - 12
 
-        -- Background
+        -- background
         love.graphics.setColor(0, 0, 0, 0.7)
         love.graphics.rectangle("fill", barX, barY, barW, barH, 6, 6)
 
-        -- Health fill
+        -- health fill
         local healthPct = math.max(0, math.min(1, (game.player.health or 0) / 100))
         local fillW = barW * healthPct
         if healthPct > 0.6 then
@@ -664,13 +874,13 @@ function love.draw()
         end
         love.graphics.rectangle("fill", barX + 4, barY + 4, math.max(0, fillW - 8), barH - 8, 4, 4)
 
-        -- Border
+        -- border
         love.graphics.setColor(1, 1, 1, 0.9)
         love.graphics.rectangle("line", barX, barY, barW, barH, 6, 6)
         love.graphics.setColor(1, 1, 1)
     end
 
-    -- Draw damage flash overlay (subtle red) if active
+    -- draw damage flash overlay (subtle red) if active
     if game.damageFlash and game.damageFlash > 0 then
         local alpha = (game.damageFlash / (game.damageFlashDuration or 0.22)) * 0.45
         love.graphics.setColor(1, 0, 0, alpha)
@@ -678,7 +888,19 @@ function love.draw()
         love.graphics.setColor(1, 1, 1)
     end
 
-    -- Death sequence drawing: fade and 'You Died' text
+    -- level counter
+    do
+        local passed = math.max(0, (game.currentLevel or 1) - 1)
+        local txt = string.format("Levels Passed: %d", passed)
+        local f = (game.fonts and game.fonts.level) or (game.fonts and game.fonts.default) or love.graphics.getFont()
+        love.graphics.setFont(f)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.print(txt, 8, 8)
+        love.graphics.setColor(1, 1, 1)
+        if game.fonts and game.fonts.default then love.graphics.setFont(game.fonts.default) end
+    end
+
+    -- death sequence drawing
     if game.deathSeq and game.deathSeq.active then
         local ds = game.deathSeq
         -- draw fade-to-black if in fade or text_fade
@@ -690,19 +912,28 @@ function love.draw()
 
         if ds.phase == "text_fade" then
             local alpha = ds.textAlpha or 0
-            love.graphics.setColor(1, 0, 0, alpha)
             local w, h = love.graphics.getDimensions()
-            local txt = "YOU DIED"
-            local font = love.graphics.getFont()
-            local size = (font and font:getHeight()) or 24
-            love.graphics.setFont(font)
-            local tw = font and font:getWidth(txt) or (string.len(txt) * 12)
-            love.graphics.printf(txt, 0, h * 0.45, w, "center")
+            local fontLarge = (game.fonts and game.fonts.deathLarge) or love.graphics.getFont()
+            love.graphics.setFont(fontLarge)
+            love.graphics.setColor(1, 0, 0, alpha)
+            love.graphics.printf("DEATH IS CALLING...\nwill you answer?", 0, h * 0.40, w, "center")
             love.graphics.setColor(1, 1, 1)
+
+            -- the DIED text has fully appeared, show smaller restart hint
+            if (ds.textAlpha or 0) >= 1 then
+                local fontSmall = (game.fonts and game.fonts.deathSmall) or love.graphics.getFont()
+                love.graphics.setFont(fontSmall)
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.printf("Press SPACE to restart", 0, h * 0.56, w, "center")
+                love.graphics.setColor(1, 1, 1)
+            end
+
+            -- restore default font for other UI
+            if game.fonts and game.fonts.default then love.graphics.setFont(game.fonts.default) end
         end
     end
 
-    -- Draw debug UI overlay last so it stays visible over death screens
+    -- debug UI overlay last so it stays visible over death screens
     if game.debug then
         love.graphics.setColor(0, 0, 0, 0.9)
         love.graphics.rectangle("fill", 10, 10, 480, 160)
@@ -721,7 +952,7 @@ function love.draw()
             Renderer.camera.x, Renderer.camera.y, Renderer.camera.scale,
             game.maze and "OK" or "NONE"), 20, 120)
 
-        -- Audio debug info
+        -- audio debug info
         local ay = 140
         local ax = 20
         love.graphics.setColor(1, 1, 1)
@@ -753,7 +984,7 @@ function love.draw()
         end
         love.graphics.print(string.format(" bells: playing=%s vol=%s", tostring(bellsPlaying), bellsVol), ax, ay)
 
-        -- Additional audio status
+        -- additional audio status
         ay = ay + 18
         local dmgCount = (game.sounds and game.sounds.damage) and #game.sounds.damage or 0
         love.graphics.print(string.format("Damage sounds: %d", dmgCount), 20, ay)
@@ -771,7 +1002,7 @@ function love.draw()
         love.graphics.print("death_bells: " .. srcStatus(game.sounds and game.sounds.death_bells), 20, ay)
         ay = ay + 18
 
-        -- Draw FPS
+        --  FPS
         love.graphics.setColor(0, 1, 0)
         love.graphics.print("FPS: " .. love.timer.getFPS(), 20, love.graphics.getHeight() - 30)
         love.graphics.setColor(1, 1, 1)
@@ -782,18 +1013,21 @@ function love.keypressed(key)
     if key == "escape" then
         love.event.quit()
     elseif key == "space" then
-        -- If in death text phase, restart the game
+        -- if in death text phase restart the game
         if game.deathSeq and game.deathSeq.active and game.deathSeq.phase == "text_fade" then
-            -- Stop any death sounds
+            -- stop any death sounds
             if game.sounds and game.sounds.death_bells then
                 game.sounds.death_bells:stop()
             end
             if game.sounds and game.sounds.death_intro then
                 game.sounds.death_intro:stop()
             end
-            -- Reset timeScale and deathSeq and regenerate maze
+            -- reset timeScale and deathSeq, reset level counter and regenerate maze
             game.timeScale = 1.0
             game.deathSeq = { active = false, phase = nil, timer = 0, fade = 0, textAlpha = 0 }
+            game.currentLevel = 1
+            game.transitioning = false
+            game.transitionAlpha = 0
             generateNewMaze()
             return
         end
@@ -806,11 +1040,11 @@ function love.keypressed(key)
         local screenWidth, screenHeight = love.graphics.getDimensions()
         Renderer.fitMazeToScreen(game.maze, screenWidth, screenHeight)
     elseif key == "r" then
-        -- Regenerate with same seed
+        -- regenerate with same seed
         print("\n--- Regenerating maze with seed: " .. game.seed .. " ---")
         game.maze = MazeGenerator.generate(game.mazeWidth, game.mazeHeight, game.seed)
         
-        -- Respawn player at first valid tile
+        -- respawn player at first valid tile
         local playerSpawnX, playerSpawnY = nil, nil
         for y = 1, game.maze.height do
             for x = 1, game.maze.width do
@@ -838,6 +1072,6 @@ function love.keypressed(key)
 end
 
 function love.resize(w, h)
-    -- Recenter camera when window is resized
+    -- recenter camera when window is resized
     Renderer.centerCamera(game.maze, w, h)
 end

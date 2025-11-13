@@ -2,6 +2,10 @@
 
 local TileMapper = {}
 
+-- my algorythm uses an unsidgen intiger to represent tiles
+-- thus returns a matrix of numbers representing tile codes
+-- any numebr tht doenst map to a valid tile is considered empty
+
 -- matching the C code
 TileMapper.PrefabCodes = {
     Empty_Tile = 0,

@@ -1,5 +1,3 @@
--- Maze Renderer Module
--- Handles drawing the maze to the screen
 
 local TileMapper = require("src.tile_mapper")
 
@@ -12,6 +10,7 @@ Renderer.camera = {
     scale = 1.0
 }
 Renderer.showingOverview = false
+Renderer.showGrid = false -- don't draw debug grid lines by default
 
 function Renderer.init()
     local TT = TileMapper.TileType
@@ -21,19 +20,23 @@ function Renderer.init()
     Renderer.tiles[TT.CORNER] = Renderer.loadTileImage("L.png")
     Renderer.tiles[TT.T_JUNCTION] = Renderer.loadTileImage("T.png")
     Renderer.tiles[TT.CROSSROAD] = Renderer.loadTileImage("X.png")
-    Renderer.tiles.SPAWN = Renderer.loadTileImage("S.png")  -- Special spawn marker
-    Renderer.tiles.FINISH = Renderer.loadTileImage("F.png")  -- Special finish marker
+    Renderer.tiles.SPAWN = Renderer.loadTileImage("S.png")  -- special spawn marker
+    Renderer.tiles.FINISH = Renderer.loadTileImage("F.png")  -- special finish marker
     Renderer.tiles[TT.EMPTY] = Renderer.loadTileImage("E.png")
     
+-- S and F are bsaically same as X jsut retextured. F has some fucntioanlity though
+
     print("Renderer initialized")
 end
 
-    -- Load enemy spritesheet (bat) and create quads (32x32 grid inside 128x128 image)
+    -- enemy spritesheet (bat) and create quads (32x32 grid inside 128x128 image)
     local enemyPath = "assets/enemy/bat.png"
     local ok, enemyImage = pcall(love.graphics.newImage, enemyPath)
     if ok and enemyImage then
         Renderer.enemy = {}
         Renderer.enemy.spritesheet = enemyImage
+        -- ensure nearest filtering for pixel-art sprites to avoid texture bleeding
+        if enemyImage and enemyImage.setFilter then pcall(function() enemyImage:setFilter("nearest", "nearest") end) end
         Renderer.enemy.frameSize = 32
         Renderer.enemy.quads = {}
         local tile = Renderer.enemy.frameSize
@@ -63,6 +66,8 @@ function Renderer.loadTileImage(filename)
     local success, image = pcall(love.graphics.newImage, path)
     
     if success then
+        -- ensure nearest filtering for pixel-art tiles to avoid texture bleeding/seams
+        if image and image.setFilter then pcall(function() image:setFilter("nearest", "nearest") end) end
         print("Loaded tile: " .. filename)
         return image
     else
@@ -72,7 +77,7 @@ function Renderer.loadTileImage(filename)
 end
 
 function Renderer.drawTile(tile, x, y, tintColor)
-    -- Use special textures for spawn/finish tiles, otherwise use normal tile texture
+    -- use special textures for spawn/finish tiles, otherwise use normal tile texture
     local image = Renderer.tiles[tile.tileType]
     if tile.isSpawn then
         image = Renderer.tiles.SPAWN
@@ -130,7 +135,9 @@ function Renderer.drawTile(tile, x, y, tintColor)
     end
     
     love.graphics.setColor(0.5, 0.5, 0.5, 0.3)
-    love.graphics.rectangle("line", drawX, drawY, Renderer.tileSize, Renderer.tileSize)
+    if Renderer.showGrid then
+        love.graphics.rectangle("line", drawX, drawY, Renderer.tileSize, Renderer.tileSize)
+    end
     love.graphics.setColor(1, 1, 1)
 end
 
@@ -139,53 +146,83 @@ function Renderer.drawMaze(maze, enemies, player)
     
     love.graphics.push()
     
-    -- If we have a player, center the view directly on player position
-    -- This bypasses Renderer.camera to avoid any coordinate drift
+    -- if their player is available, center the view directly on player position
+    -- bypasses Renderer.camera to avoid any coordinate drift (this drove me crazy)
     if player and not Renderer.showingOverview then
         local screenWidth = love.graphics.getWidth()
         local screenHeight = love.graphics.getHeight()
         local centerX = screenWidth / 2
         local centerY = screenHeight / 2
         
-        -- Translate so player appears at screen center
+        -- translate so player appears at screen center
         love.graphics.translate(centerX, centerY)
         love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
-        love.graphics.translate(-player.pixelX, -player.pixelY)
+        love.graphics.translate(-math.floor(player.pixelX + 0.5), -math.floor(player.pixelY + 0.5))
     else
-        -- Use camera coordinates for overview mode
-        love.graphics.translate(-Renderer.camera.x, -Renderer.camera.y)
+        -- use camera coordinates for overview mode
+        love.graphics.translate(-math.floor(Renderer.camera.x + 0.5), -math.floor(Renderer.camera.y + 0.5))
         love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
     end
 
-    -- Draw all maze tiles first
+    -- draw all maze tiles first
     for y = 1, maze.height do
         for x = 1, maze.width do
             local tile = maze.tiles[y][x]
             if tile then
                 Renderer.drawTile(tile, x - 1, y - 1)
+                -- capture finish tile center (world coords) so caller can add overlays
+                if tile.isFinish then
+                    Renderer._finishCenterX = (x - 1) * Renderer.tileSize + Renderer.tileSize / 2
+                    Renderer._finishCenterY = (y - 1) * Renderer.tileSize + Renderer.tileSize / 2
+                end
             end
         end
     end
 
-    -- Draw enemies on top of tiles
+    -- draw enemies on top of tiles
     if enemies then
         for _, enemy in ipairs(enemies) do
             enemy:draw()
         end
     end
 
-    -- Draw player on top of everything
+    -- draw player on top of everything
     local playerScreenX, playerScreenY
     if player then
         player:draw()
-        -- Capture player screen position (after transform, before pop)
+        -- capture player screen position (after transform, before pop)
         playerScreenX = player.pixelX
-        playerScreenY = player.pixelY - 8  -- Match sprite draw offset
+        playerScreenY = player.pixelY - 8  -- sprite draw offset
+    end
+    
+    -- draw a warm orange glow at the finish tile if player is nearby (in world space)
+    if Renderer._finishCenterX and Renderer._finishCenterY and player then
+        local fx, fy = Renderer._finishCenterX, Renderer._finishCenterY
+        local dx = fx - player.pixelX
+        local dy = fy - player.pixelY
+        local dist = math.sqrt(dx*dx + dy*dy)
+        local visibleRadius = (player.darkness and player.darkness.innerRadius) or 200
+        local triggerRadius = visibleRadius * 1.35
+        if dist <= triggerRadius then
+            local t = 1 - (dist / triggerRadius)
+            if t < 0 then t = 0 end
+            -- soft outer glow
+            love.graphics.setBlendMode("add")
+            love.graphics.setColor(1.0, 0.6, 0.2, 0.12 * t)
+            local outerR = Renderer.tileSize * (0.9 + 1.8 * t)
+            love.graphics.circle("fill", fx, fy, outerR, 48)
+            -- stronger inner core
+            love.graphics.setColor(1.0, 0.55, 0.15, 0.6 * t)
+            local innerR = Renderer.tileSize * (0.25 + 0.6 * t)
+            love.graphics.circle("fill", fx, fy, innerR, 32)
+            love.graphics.setBlendMode("alpha")
+            love.graphics.setColor(1, 1, 1)
+        end
     end
 
     love.graphics.pop()
     
-    -- Return player screen position for overlay alignment
+    -- return player screen position for overlay alignment
     return playerScreenX, playerScreenY
 end
 

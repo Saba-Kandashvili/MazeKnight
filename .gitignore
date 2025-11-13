@@ -1,0 +1,11 @@
+# Ignore runtime logs and temp files
+game.log
+
+# macOS Finder
+.DS_Store
+
+# Windows thumbnail cache
+Thumbs.db
+
+# Love2D save directory (optional)
+save/

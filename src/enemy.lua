@@ -17,13 +17,13 @@ function Enemy.new(x, y, maze)
     self.speed = 80
     self.radius = 12
     
-    -- Sprite / animation defaults (bat spritesheet is 32x32 frames inside a 128x128 image)
+    -- sprite / animation defaults (bat is 32x32 inside 128x128)
     self.spriteSheet = Renderer.enemy and Renderer.enemy.spritesheet or nil
     self.frameWidth = 32
     self.frameHeight = 32
-    -- Make bats slightly smaller (80%) of computed scale
+    -- (80%) of computed scale
     self.spriteScale = ((Renderer.enemy and Renderer.enemy.scale) or (ts / self.frameWidth)) * 0.8
-    self.animFrame = 1 -- 1..3 corresponding to cols 2..4
+    self.animFrame = 1
     self.animTimer = 0
     self.animSpeed = 0.12
     self.isDead = false
@@ -143,6 +143,18 @@ function Enemy:canContinue()
 end
 
 function Enemy:update(dt)
+    -- if dead, stop movement and stick to dead frame
+    if self.isDead then
+        -- no longer moves or chooses directions
+        self.direction = nil
+        self.animFrame = 1
+        if self.damageCooldown and self.damageCooldown > 0 then
+            self.damageCooldown = self.damageCooldown - dt
+            if self.damageCooldown < 0 then self.damageCooldown = 0 end
+        end
+        return
+    end
+
     if not self.direction then
         self:chooseNewDirection()
         return
@@ -193,7 +205,7 @@ function Enemy:update(dt)
 
     -- no separate facing; sprite row is chosen from actual move direction
 
-    -- Update wing flap animation (only when alive)
+    -- wing flap animation (only when alive)
     if not self.isDead then
         self.animTimer = self.animTimer + dt
         if self.animTimer >= self.animSpeed then
@@ -214,10 +226,9 @@ function Enemy:update(dt)
 end
 
 function Enemy:draw()
-    -- Draw sprite if available, otherwise fallback to simple shape
+    -- fallback to simple shape if no sprite
     if self.spriteSheet and Renderer.enemy and Renderer.enemy.quads then
-        -- Rows mapping: use specific rows for direction
-        -- Desired mapping: north (up) -> row 3, east (right) -> row 2,
+        -- mapping: north (up) -> row 3, east (right) -> row 2,
         -- south (down) -> row 1, west (left) -> row 4
         local rowMap = { north = 3, east = 2, south = 1, west = 4 }
         local row = rowMap[self.direction] or 2
@@ -225,7 +236,7 @@ function Enemy:draw()
         if self.isDead then
             quad = Renderer.enemy.quads[row][1] -- first column = dead
         else
-            -- Reverse animation order: animFrame 1..3 -> cols 4..2
+            -- eeverse animation order: animFrame 1..3 -> cols 4..2
             local col = 5 - self.animFrame
             quad = Renderer.enemy.quads[row][col]
         end
