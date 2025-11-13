@@ -37,9 +37,9 @@ function Player.new(x, y, maze)
     self.direction = "right"
     
     self.spritesheet = nil
-    self.frameWidth = 32
-    self.frameHeight = 32
-    self.spriteScale = 0.75
+    self.frameWidth = 64  -- knight.png is 512x512, 8x8 grid = 64x64 per frame
+    self.frameHeight = 64
+    self.spriteScale = 0.375  -- Scale down to 24 pixels (64 * 0.375 = 24)
     self.currentAnimation = "idle"
     self.currentFrame = 1
     self.animationTimer = 0
@@ -330,9 +330,10 @@ function Player:updateAnimation(dt)
 end
 
 function Player:draw()
+    -- Draw placeholder if no sprite loaded
     if not self.spritesheet then
-        love.graphics.setColor(0.2, 0.8, 0.3)
-        love.graphics.circle("fill", self.pixelX, self.pixelY - 8, 16)
+        love.graphics.setColor(0.2, 1.0, 0.3)
+        love.graphics.circle("fill", self.pixelX, self.pixelY - 8, 20)
         love.graphics.setColor(1, 1, 1)
         
         if self.direction == "right" then
@@ -383,20 +384,20 @@ function Player:draw()
         love.graphics.setColor(1, 1, 1, 1)
     end
     
+    -- Draw centered on position with small upward offset
     love.graphics.draw(
         self.spritesheet,
         quad,
         self.pixelX,
-        self.pixelY,
+        self.pixelY - 8,
         0,
         scaleX,
         self.spriteScale,
         self.frameWidth / 2,
-        self.frameHeight
+        self.frameHeight / 2
     )
     
     love.graphics.setColor(1, 1, 1, 1)
-    
     self:drawHealthBar()
 end
 
@@ -404,7 +405,7 @@ function Player:drawHealthBar()
     local barWidth = 40
     local barHeight = 4
     local x = self.pixelX - barWidth / 2
-    local y = self.pixelY - (self.frameHeight * self.spriteScale) - 8
+    local y = self.pixelY - 24
     
     love.graphics.setColor(0.2, 0.2, 0.2)
     love.graphics.rectangle("fill", x, y, barWidth, barHeight)

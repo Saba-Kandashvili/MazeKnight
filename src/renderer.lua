@@ -96,27 +96,30 @@ function Renderer.drawTile(tile, x, y, tintColor)
 end
 
 function Renderer.drawMaze(maze, enemies, player)
+    if not maze then return end
+    
     love.graphics.push()
-    love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
     love.graphics.translate(-Renderer.camera.x, -Renderer.camera.y)
+    love.graphics.scale(Renderer.camera.scale, Renderer.camera.scale)
 
-    if maze then
-        for y = 1, maze.height do
-            for x = 1, maze.width do
-                local tile = maze.tiles[y][x]
-                if tile then
-                    Renderer.drawTile(tile, x - 1, y - 1)
-                end
+    -- Draw all maze tiles first
+    for y = 1, maze.height do
+        for x = 1, maze.width do
+            local tile = maze.tiles[y][x]
+            if tile then
+                Renderer.drawTile(tile, x - 1, y - 1)
             end
         end
     end
 
+    -- Draw enemies on top of tiles
     if enemies then
         for _, enemy in ipairs(enemies) do
             enemy:draw()
         end
     end
 
+    -- Draw player on top of everything
     if player then
         player:draw()
     end
