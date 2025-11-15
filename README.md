@@ -1,47 +1,49 @@
-MazeKnight
-=========
+# MazeKnight
 
 <img width="638" height="572" alt="Screenshot 2025-11-13 225719" src="https://github.com/user-attachments/assets/133fdd10-7f1f-42a9-a457-39e69cfa31cf" />
 
 <img width="619" height="602" alt="Screenshot 2025-11-13 225537" src="https://github.com/user-attachments/assets/4da630b1-b189-40a4-87ee-b94839f55039" />
 
-
-
-
-A small procedural maze explorer I made with LÖVE (Love2D).
+A small procedural maze explorer I made with Love2D and my old maze generation algorythm™.
 
 **What it is:**
+
 - A top-down, grid-based roguelike-lite where you explore generated mazes, fight simple enemies, and try to reach the exit.
 
 **Run (dev):**
+
 1. Install LÖVE 11.4 (https://love2d.org)
 2. From the project root:
+   Recommended platform: Windows. The game should also run on Linux, but I haven't tested that setup — if you try Linux, ensure LÖVE 11.4 is installed and the native C library matches your system architecture (64-bit). Feel free to open an issue if you run into problems.
+
 ```
 love .
 ```
 
 **Notes:**
+
 - Audio and image assets are under `assets/`.
 - Game code lives in `src/` and `main.lua`.
 - If you see a `game.log` file it is a runtime log — I ignore it in `.gitignore`.
 
 **Build / Debug tips:**
+
 - Run `love .` to start. If the game can't find the native lib, double-check the platform binary and that it matches the LÖVE architecture (32 vs 64-bit).
 
 Debug
+
 - Default: debug mode is OFF when the game starts.
 - Toggle debug: press `F3` to enable/disable debug overlays.
 - When debug is ON:
-	- Hold `Backspace` to show a full overview of the maze (camera will fit the entire map).
-	- A debug overlay shows FPS, audio source status, and other runtime info.
+  - Hold `Backspace` to show a full overview of the maze (camera will fit the entire map).
+  - A debug overlay shows FPS, audio source status, and other runtime info.
 - Darkness: press `F` to cycle darkness presets (changes how the radial darkness around the player looks).
 
-
-
 **Credits:**
 **Credits:**
+
 - Maze generator: the game uses a C native library I developed — it's a heavily modified wave fucntioncollapse algorythim with
-maze solvability validation. 
+  maze solvability validation.
 - Audio: all sounds were recorded and produced by me (guitar).
 
 **License**
