@@ -37,6 +37,7 @@ local game = {
         selection = 1,
         options = {"START GAME", "QUIT"}
     },
+    highScore = 0, -- Track best run
     maze = nil,
     seed = nil,
     mazeWidth = 15,
@@ -72,6 +73,18 @@ function love.load()
     
     if love.system.getOS() == "Windows" then
         io.stdout:setvbuf("no")
+    end
+
+    -- Setup Save Folder
+    love.filesystem.setIdentity("MazeKnight_Save")
+    
+    -- Load High Score
+    if love.filesystem.getInfo("highscore.txt") then
+        local data = love.filesystem.read("highscore.txt")
+        game.highScore = tonumber(data) or 0
+        print("Loaded High Score: " .. game.highScore)
+    else
+        game.highScore = 0
     end
 
     love.graphics.setBackgroundColor(0.05, 0.05, 0.05)
@@ -492,7 +505,7 @@ function love.update(dt)
 
     if game.player then
         for _, enemy in ipairs(game.enemies) do
-            if not game.player.isDead and not game.player.isTakingDamage then
+            if not enemy.isDead and not game.player.isDead and not game.player.isTakingDamage then
                 local dx = enemy.pixelX - game.player.pixelX
                 local dy = enemy.pixelY - game.player.pixelY
                 local dist = math.sqrt(dx*dx + dy*dy)
@@ -522,6 +535,15 @@ function love.update(dt)
             ds.active = true
             ds.phase = "slowdown"
             ds.timer = 0
+            
+            -- SAVE HIGH SCORE
+            local finalScore = math.max(0, game.currentLevel - 1)
+            if finalScore > game.highScore then
+                game.highScore = finalScore
+                love.filesystem.write("highscore.txt", tostring(finalScore))
+                print("New High Score Saved: " .. finalScore)
+            end
+            
             ds.originalTimeScale = game.timeScale or 1.0
             ds.targetTimeScale = 0.12
             ds.originalCameraScale = Renderer.camera.scale
@@ -665,19 +687,24 @@ end
 local function drawMenu()
     local w, h = love.graphics.getDimensions()
     
-    -- Title (Orange, BleedingPixels)
+    -- Title
     love.graphics.setFont(game.fonts.deathLarge)
     love.graphics.setColor(1, 0.5, 0, 1) -- Orange
     love.graphics.printf("MAZEKNIGHT", 0, h * 0.25, w, "center")
     
-    -- Options (Minecraft Font)
+    -- High Score Display
+    love.graphics.setFont(game.fonts.deathSmall) -- Use the medium font
+    love.graphics.setColor(1, 1, 0, 1) -- Yellow
+    love.graphics.printf("BEST RUN: " .. game.highScore .. " LEVELS", 0, h * 0.45, w, "center")
+    
+    -- Options
     love.graphics.setFont(game.fonts.deathSmall)
     for i, opt in ipairs(game.menu.options) do
         if i == game.menu.selection then
-            love.graphics.setColor(1, 1, 1, 1) -- Selected: White
+            love.graphics.setColor(1, 1, 1, 1) -- White
             love.graphics.printf("> " .. opt .. " <", 0, h * 0.55 + (i * 40), w, "center")
         else
-            love.graphics.setColor(0.5, 0.5, 0.5, 1) -- Unselected: Gray
+            love.graphics.setColor(0.5, 0.5, 0.5, 1) -- Gray
             love.graphics.printf(opt, 0, h * 0.55 + (i * 40), w, "center")
         end
     end

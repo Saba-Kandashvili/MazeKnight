@@ -175,12 +175,29 @@ function Renderer.drawMaze(maze, enemies, player, particles)
     if Renderer._finishCenterX and Renderer._finishCenterY and player then
         local fx, fy = Renderer._finishCenterX, Renderer._finishCenterY
         local dist = math.sqrt((fx-player.pixelX)^2 + (fy-player.pixelY)^2)
-        if dist <= 270 then -- hardcoded radius logic approx
-             love.graphics.setBlendMode("add")
-             love.graphics.setColor(1, 0.6, 0.2, 0.3)
-             love.graphics.circle("fill", fx, fy, Renderer.tileSize, 32)
-             love.graphics.setBlendMode("alpha")
-             love.graphics.setColor(1, 1, 1)
+        -- Using the same radius logic as audio (approx 200 * 1.35 = 270)
+        local triggerRadius = 270
+        
+        if dist <= triggerRadius then
+            local t = 1 - (dist / triggerRadius)
+            -- Clamp t
+            if t < 0 then t = 0 end
+            if t > 1 then t = 1 end
+            
+            love.graphics.setBlendMode("add")
+            
+            -- Outer Glow (Grows as you get closer)
+            love.graphics.setColor(1.0, 0.6, 0.2, 0.2 * t)
+            local outerR = Renderer.tileSize * (0.8 + 1.2 * t)
+            love.graphics.circle("fill", fx, fy, outerR, 64)
+            
+            -- Inner Core (Intense)
+            love.graphics.setColor(1.0, 0.8, 0.4, 0.5 * t)
+            local innerR = Renderer.tileSize * (0.3 + 0.5 * t)
+            love.graphics.circle("fill", fx, fy, innerR, 32)
+            
+            love.graphics.setBlendMode("alpha")
+            love.graphics.setColor(1, 1, 1)
         end
     end
 
