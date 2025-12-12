@@ -3,7 +3,9 @@
 
 local MazeGenerator = require("src.maze_generator")
 local Renderer = require("src.renderer")
-local Enemy = require("src.enemy")
+local Bat = require("src.enemies.bat")
+local Seeker = nil
+pcall(function() Seeker = require("src.enemies.seeker") end)
 local Player = require("src.player")
 
 --writes to stdout (if available) and appends to `game.log` for troubleshooting
@@ -442,7 +444,13 @@ function generateNewMaze()
     -- spawn enemies at random locations
     for i = 1, math.min(numEnemies, #filteredSpawnTiles) do
         local spawnTile = filteredSpawnTiles[math.random(1, #filteredSpawnTiles)]
-        local enemy = Enemy.new(spawnTile.x, spawnTile.y, game.maze)
+        local isSeeker = Seeker and (math.random() < 0.20)  -- 20% chance to spawn a seeker when available
+        local enemy = nil
+        if isSeeker then
+            enemy = Seeker.new(spawnTile.x, spawnTile.y, game.maze)
+        else
+            enemy = Bat.new(spawnTile.x, spawnTile.y, game.maze)
+        end
         table.insert(game.enemies, enemy)
     end
     
@@ -549,6 +557,9 @@ function love.update(dt)
         end
     end
     
+    -- pathfinder budget per frame to avoid spikes when many enemies recompute paths
+    game.pathfinderBudget = game.pathfinderBudget or 4
+    game.pathfinderUsed = 0
     -- update enemies (scaled dt)
     for _, enemy in ipairs(game.enemies) do
         enemy:update(scaledDt)

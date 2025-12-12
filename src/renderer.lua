@@ -61,6 +61,36 @@ end
         Renderer.enemy = nil
     end
 
+    -- optional seeker spritesheet (32x32 frames in a 4x4 grid), override if present
+    local seekerPath = "assets/enemy/seeker.png"
+    local skOk, seekerImage = pcall(love.graphics.newImage, seekerPath)
+    if skOk and seekerImage then
+        Renderer.seeker = {}
+        Renderer.seeker.spritesheet = seekerImage
+        if seekerImage and seekerImage.setFilter then pcall(function() seekerImage:setFilter("nearest", "nearest") end) end
+        Renderer.seeker.frameSize = 32
+        Renderer.seeker.quads = {}
+        local tile = Renderer.seeker.frameSize
+        local w, h = seekerImage:getWidth(), seekerImage:getHeight()
+        for row = 1, 4 do
+            Renderer.seeker.quads[row] = {}
+            for col = 1, 4 do
+                Renderer.seeker.quads[row][col] = love.graphics.newQuad(
+                    (col - 1) * tile,
+                    (row - 1) * tile,
+                    tile,
+                    tile,
+                    w,
+                    h
+                )
+            end
+        end
+        Renderer.seeker.scale = Renderer.tileSize / Renderer.seeker.frameSize
+        print("Loaded seeker spritesheet: " .. seekerPath)
+    else
+        Renderer.seeker = nil
+    end
+
 function Renderer.loadTileImage(filename)
     local path = "assets/tiles/" .. filename
     local success, image = pcall(love.graphics.newImage, path)
