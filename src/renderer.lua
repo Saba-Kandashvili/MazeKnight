@@ -9,7 +9,7 @@ Renderer.camera = {
     scale = 1.0
 }
 Renderer.showingOverview = false
-Renderer.showGrid = false 
+Renderer.showGrid = false
 
 function Renderer.init()
     local TT = TileMapper.TileType
@@ -32,7 +32,7 @@ function Renderer.init()
         Renderer.enemy = {}
         Renderer.enemy.spritesheet = enemyImage
         if enemyImage.setFilter then enemyImage:setFilter("nearest", "nearest") end
-        
+
         -- Bat is 32x32 frames
         Renderer.enemy.frameSize = 32
         Renderer.enemy.quads = {}
@@ -60,15 +60,15 @@ function Renderer.init()
         Renderer.seeker = {}
         Renderer.seeker.spritesheet = seekerImage
         if seekerImage.setFilter then seekerImage:setFilter("nearest", "nearest") end
-        
-        -- Auto-detect frame size. 
+
+        -- Auto-detect frame size.
         -- If image is 64px wide and has 4 cols, frame is 16px.
         Renderer.seeker.frameSize = seekerImage:getWidth() / 4
-        
+
         Renderer.seeker.quads = {}
         local tile = Renderer.seeker.frameSize
         local w, h = seekerImage:getWidth(), seekerImage:getHeight()
-        
+
         -- Create quads for 4 rows x 4 cols
         for row = 1, 4 do
             Renderer.seeker.quads[row] = {}
@@ -78,7 +78,7 @@ function Renderer.init()
                 )
             end
         end
-        
+
         -- Calculate scale to match the tile size (makes the 16px sprite look big)
         Renderer.seeker.scale = Renderer.tileSize / Renderer.seeker.frameSize
         print(string.format("Loaded seeker: %s (Frame: %dx%d)", seekerPath, tile, tile))
@@ -104,7 +104,7 @@ function Renderer.drawTile(tile, x, y, tintColor)
     local image = Renderer.tiles[tile.tileType]
     if tile.isSpawn then image = Renderer.tiles.SPAWN
     elseif tile.isFinish then image = Renderer.tiles.FINISH end
-    
+
     local rotation = TileMapper.getRotationRadians(tile.rotation)
     local drawX = x * Renderer.tileSize
     local drawY = y * Renderer.tileSize
@@ -123,7 +123,8 @@ function Renderer.drawTile(tile, x, y, tintColor)
     love.graphics.setColor(1, 1, 1)
 end
 
-function Renderer.drawMaze(maze, enemies, player)
+-- Modified to accept particles
+function Renderer.drawMaze(maze, enemies, player, particles)
     if not maze then return end
     love.graphics.push()
 
@@ -154,6 +155,12 @@ function Renderer.drawMaze(maze, enemies, player)
     -- Draw enemies
     if enemies then
         for _, enemy in ipairs(enemies) do enemy:draw() end
+    end
+
+    -- Draw particles (if any)
+    if particles then
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.draw(particles, 0, 0)
     end
 
     -- Draw player

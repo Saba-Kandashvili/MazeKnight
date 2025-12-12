@@ -56,7 +56,9 @@ local game = {
     currentLevel = 1,
     -- darkness/vision settings
     visionRadius = 200,
-    darknessAlpha = 0.85
+    darknessAlpha = 0.85,
+    -- particles
+    hitParticles = nil
 }
 
 -- safe volume-set helper
@@ -75,6 +77,26 @@ function love.load()
     love.graphics.setBackgroundColor(0.05, 0.05, 0.05)
     love.graphics.setDefaultFilter("nearest", "nearest")
 
+    -- === PARTICLE SYSTEM ===
+    -- Create a 2x2 white pixel texture programmatically
+    local particleImg = love.image.newImageData(2, 2)
+    particleImg:mapPixel(function() return 255, 255, 255, 255 end)
+    local pTexture = love.graphics.newImage(particleImg)
+
+    game.hitParticles = love.graphics.newParticleSystem(pTexture, 200)
+    game.hitParticles:setParticleLifetime(0.2, 0.5) -- Lasts 0.2 to 0.5 seconds
+    game.hitParticles:setSpeed(100, 250)            -- Fast explosion
+    game.hitParticles:setLinearAcceleration(0, 200, 0, 500) -- Gravity (fall down)
+    game.hitParticles:setSpread(math.pi * 2)        -- Explode in circle
+    game.hitParticles:setSizes(2, 1, 0)             -- Shrink over time
+    -- Color: Starts Orange -> Turns Grey -> Fades to Dark
+    game.hitParticles:setColors(
+        1, 0.6, 0.1, 1,    -- Bright Orange
+        0.6, 0.6, 0.6, 0.8, -- Grey
+        0.1, 0.1, 0.1, 0    -- Dark/Invisible
+    )
+    -- =======================
+
     -- === FONT LOADING ===
     game.fonts = {}
     local function loadPixelFont(path, size)
@@ -89,9 +111,9 @@ function love.load()
     end
 
     -- Fonts
-    game.fonts.deathLarge = loadPixelFont("assets/fonts/BleedingPixels.ttf", 96) -- Also used for Menu Title
+    game.fonts.deathLarge = loadPixelFont("assets/fonts/BleedingPixels.ttf", 96) 
     game.fonts.default = loadPixelFont("assets/fonts/minecraft_font.ttf", 16)
-    game.fonts.deathSmall = loadPixelFont("assets/fonts/minecraft_font.ttf", 24) -- Also used for Menu Options
+    game.fonts.deathSmall = loadPixelFont("assets/fonts/minecraft_font.ttf", 24) 
     game.fonts.level = loadPixelFont("assets/fonts/minecraft_font.ttf", 20)
 
     love.graphics.setFont(game.fonts.default)
@@ -217,17 +239,26 @@ function love.load()
                 local dist2 = dx*dx + dy*dy
                 if dist2 <= (attackRange * attackRange) then
                     local dist = math.sqrt(dist2)
+                    local hit = false
+                    
                     if fx == 0 and fy == 0 then
-                        enemy.isDead = true
-                        enemy.direction = nil
-                        enemy.speed = 0
+                        hit = true
                     else
                         local nx, ny = dx / dist, dy / dist
                         local dot = nx * fx + ny * fy
                         if dot >= 0 then
-                            enemy.isDead = true
-                            enemy.direction = nil
-                            enemy.speed = 0
+                            hit = true
+                        end
+                    end
+                    
+                    if hit then
+                        enemy.isDead = true
+                        enemy.direction = nil
+                        enemy.speed = 0
+                        -- SPAWN PARTICLES
+                        if game.hitParticles then
+                            game.hitParticles:setPosition(enemy.pixelX, enemy.pixelY)
+                            game.hitParticles:emit(20) -- burst of 20 sparks
                         end
                     end
                 end
@@ -382,6 +413,11 @@ function love.update(dt)
 
     local timeScale = game.timeScale or 1.0
     local scaledDt = dt * timeScale
+
+    -- UPDATE PARTICLES
+    if game.hitParticles then
+        game.hitParticles:update(scaledDt)
+    end
 
     if game.player then
         game.player:update(scaledDt)
@@ -662,7 +698,8 @@ function love.draw()
         Renderer.camera.y = game.player.pixelY - (screenHeight / (2 * Renderer.camera.scale))
     end
 
-    Renderer.drawMaze(game.maze, game.enemies, game.player)
+    -- Pass particles to renderer so they draw in world space
+    Renderer.drawMaze(game.maze, game.enemies, game.player, game.hitParticles)
 
     if game.transitioning and game.transitionAlpha > 0 then
         love.graphics.setColor(0, 0, 0, game.transitionAlpha)
