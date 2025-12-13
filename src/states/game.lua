@@ -26,6 +26,11 @@ function Game.enter()
     game.transitioning = false
     game.deathSeq = { active = false, phase = nil, timer = 0, fade = 0, textAlpha = 0 }
     
+    -- Fix: Initialize Camera State for Overview
+    game.savedCamera = { x = 0, y = 0, scale = 1 }
+    game.showingMazeOverview = false
+    Renderer.showingOverview = false
+    
     -- Death Menu Variables
     Game.deathSelection = 1
     Game.deathOptions = {"RESTART", "MAIN MENU", "QUIT"}
@@ -223,6 +228,9 @@ function Game.update(dt)
 
         if game.debug and love.keyboard.isDown("backspace") then
             if not game.showingMazeOverview then
+                -- FIX: Initialize if somehow missing, though enter() should handle it
+                if not game.savedCamera then game.savedCamera = {x=0, y=0, scale=1} end
+                
                 game.savedCamera.x = Renderer.camera.x
                 game.savedCamera.y = Renderer.camera.y
                 game.savedCamera.scale = Renderer.camera.scale
@@ -242,9 +250,11 @@ function Game.update(dt)
             end
         else
             if game.showingMazeOverview then
-                Renderer.camera.x = game.savedCamera.x
-                Renderer.camera.y = game.savedCamera.y
-                Renderer.camera.scale = game.savedCamera.scale
+                if game.savedCamera then
+                    Renderer.camera.x = game.savedCamera.x
+                    Renderer.camera.y = game.savedCamera.y
+                    Renderer.camera.scale = game.savedCamera.scale
+                end
                 game.showingMazeOverview = false
                 Renderer.showingOverview = false
             end
