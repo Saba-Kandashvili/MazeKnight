@@ -42,7 +42,7 @@ Debug
 
 - Maze generator: the game uses a C native library I developed — it's a heavily modified and optimized wave fucntioncollapse algorythim with maze solvability validation.
 - Audio: all sounds were recorded and produced by me (guitar).
-- <img width="320" height="172" alt="picture of the dev env" src="[https://github.com/user-attachments/assets/4da630b1-b189-40a4-87ee-b94839f55039](https://github.com/user-attachments/assets/337c3410-29aa-4870-976d-4317bbf9abfd)" />
+- <img width="320" height="172" alt="picture of the dev env" src="https://github.com/user-attachments/assets/337c3410-29aa-4870-976d-4317bbf9abfd" />
 
 
 **License**
