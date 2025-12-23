@@ -57,6 +57,13 @@ function Game.enter()
         Renderer.camera.x = game.player.pixelX - w / (2 * Renderer.camera.scale)
         Renderer.camera.y = game.player.pixelY - h / (2 * Renderer.camera.scale)
     end
+
+    -- music starts immediately when entering the game if nothing is playing
+    if game and game.music and (not game.music.current) then
+        -- IF menu had a pending wait, cancel it and start normal playback
+        game.music.state = "idle"
+        game.music:startRandom()
+    end
 end
 
 function Game.generateNewMaze()
@@ -560,6 +567,11 @@ function Game.draw()
         love.graphics.setColor(1, 1, 1)
         love.graphics.print("MazeKnight Debug", 20, 20)
         love.graphics.print("Level: " .. game.currentLevel, 20, 40)
+        -- show which music track is playing (if any)
+        if game.music then
+            local name = game.music.currentName or "(none)"
+            love.graphics.print("Music: " .. name .. "  [" .. (game.music.state or "") .. "]", 20, 60)
+        end
         love.graphics.setColor(0, 1, 0)
         love.graphics.print("FPS: " .. love.timer.getFPS(), 20, 130)
         love.graphics.setColor(1, 1, 1)

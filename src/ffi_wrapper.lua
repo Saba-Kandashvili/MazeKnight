@@ -66,7 +66,7 @@ function FFIWrapper.generateMaze(width, height, layers, seed, fullness)
         for y = 0, height - 1 do
             lua_grid[layer + 1][y + 1] = {}
             for x = 0, width - 1 do
-                -- Access the 3D array: grid[layer][y][x]
+                -- 3D array: grid[layer][y][x]
                 local tile_value = grid_ptr[layer][y][x]
                 lua_grid[layer + 1][y + 1][x + 1] = tonumber(tile_value)
             end

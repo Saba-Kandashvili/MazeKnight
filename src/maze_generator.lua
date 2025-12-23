@@ -1,4 +1,3 @@
-
 local FFIWrapper = require("src.ffi_wrapper")
 local TileMapper = require("src.tile_mapper")
 local Tile = require("src.tile")

@@ -1,4 +1,3 @@
-
 local TileMapper = require("src.tile_mapper")
 local Renderer = require("src.renderer")
 

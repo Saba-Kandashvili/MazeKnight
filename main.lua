@@ -1,12 +1,11 @@
 -- MazeKnight
--- Main Entry Point
 
--- Load States
+-- load States
 local MenuState = require("src.states.menu")
 local GameState = require("src.states.game")
 local Renderer = require("src.renderer")
 
--- Global State Manager
+-- global State Manager
 State = {
     current = nil,
     currentName = "menu"
@@ -81,6 +80,127 @@ function love.load()
     game.sounds.ambient = {}
     for i=1,5 do table.insert(game.sounds.ambient, loadSnd("assets/audio/ambient/amb_"..i..".wav")) end
 
+    -- Load music tracks (random play, fade in/out)
+    -- tracks are stored as { src = <Source>, name = <filename> }
+    game.music = { tracks = {}, current = nil, currentIdx = nil, currentName = nil, lastIdx = nil, targetVolume = 0.47, fadeTime = 2.0, minGap = 8, maxGap = 25, state = "idle", timer = 0, currentTargetVolume = 0, gapDuration = 0 }
+
+    local function loadMusicTracks()
+        -- try to load everything inside assets/audio/tracks
+        if not love.filesystem.getDirectoryItems then return end
+        local items = love.filesystem.getDirectoryItems("assets/audio/tracks")
+        for _, fname in ipairs(items) do
+            local path = "assets/audio/tracks/" .. fname
+            local ok, s = pcall(love.audio.newSource, path, "stream")
+            if ok and s then
+                s:setLooping(false)
+                s:setVolume(0)
+                table.insert(game.music.tracks, { src = s, name = fname })
+            end
+        end
+    end
+
+    function game.music:startTrack(idx)
+        if #self.tracks == 0 then return end
+        idx = idx or math.random(1, #self.tracks)
+        -- avoid repeating the last played track if possible
+        if #self.tracks > 1 and idx == self.lastIdx then
+            idx = (idx % #self.tracks) + 1
+        end
+
+        -- stop existing source
+        if self.current then
+            self.current:stop()
+        end
+
+        local entry = self.tracks[idx]
+        if not entry then return end
+        local s = entry.src or entry
+        -- remember previous current index to avoid immediate repeats
+        self.lastIdx = self.currentIdx
+        self.current = s
+        self.currentIdx = idx
+        self.currentName = entry.name or ("track_" .. tostring(idx))
+        -- small per-track volume variation so quiet tracks can be a bit louder
+        local perTrackMul = 0.95 + (math.random() * 0.1) -- 0.95 .. 1.05
+        self.currentTargetVolume = (self.targetVolume or 0.47) * perTrackMul
+        s:stop(); s:seek(0); s:setVolume(0); s:play()
+        self.state = "fading_in"
+        self.timer = 0
+    end
+
+    function game.music:startRandom()
+        if #self.tracks == 0 then return end
+        if #self.tracks == 1 then
+            self:startTrack(1)
+            return
+        end
+        -- try to pick a track that isn't the last played or currently playing
+        local idx = math.random(1, #self.tracks)
+        if idx == self.currentIdx or idx == self.lastIdx then
+            for i = 1, 6 do
+                idx = math.random(1, #self.tracks)
+                if idx ~= self.currentIdx and idx ~= self.lastIdx then break end
+            end
+        end
+        -- fallback to sequential pick if unlucky
+        if idx == self.currentIdx or idx == self.lastIdx then
+            idx = ((self.currentIdx or 0) % #self.tracks) + 1
+            if idx == self.lastIdx then idx = (idx % #self.tracks) + 1 end
+        end
+        self:startTrack(idx)
+    end
+
+    function game.music:update(dt)
+        -- handle gap/silence waiting between tracks
+        if self.state == "gap" then
+            self.timer = self.timer + dt
+            if self.timer >= (self.gapDuration or self.minGap) then
+                self.timer = 0
+                self.state = "idle"
+                self:startRandom()
+            end
+            return
+        end
+
+        if not self.current then return end
+
+        if self.state == "fading_in" then
+            self.timer = self.timer + dt
+            local t = math.min(self.timer / self.fadeTime, 1)
+            local tv = self.currentTargetVolume or self.targetVolume
+            self.current:setVolume((tv or 0.47) * t)
+            if t >= 1 then self.state = "playing"; self.timer = 0 end
+        elseif self.state == "playing" then
+            local dur = self.current:getDuration()
+            local ok, pos = pcall(function() return self.current:tell() end)
+            if dur and ok and pos and (dur - pos) <= self.fadeTime then
+                self.state = "fading_out"
+                self.timer = 0
+            end
+        elseif self.state == "fading_out" then
+            self.timer = self.timer + dt
+            local t = math.min(self.timer / self.fadeTime, 1)
+            local tv = self.currentTargetVolume or self.targetVolume
+            self.current:setVolume((tv or 0.47) * (1 - t))
+            if t >= 1 then
+                -- finish track and schedule silence gap
+                self.current:stop()
+                self.current:setVolume(0)
+                self.lastIdx = self.currentIdx
+                self.current = nil
+                self.currentIdx = nil
+                self.currentTargetVolume = 0
+                self.state = "gap"
+                self.timer = 0
+                self.gapDuration = math.random(self.minGap or 8, self.maxGap or 25)
+            end
+        end
+    end
+
+    loadMusicTracks()
+    -- don't start music automatically here; let states decide when to start it
+    -- (Menu will remain silent for first 10s, Game will start music immediately)
+
     -- Initialize Renderer
     Renderer.init()
     
@@ -97,10 +217,8 @@ function love.load()
     local ok, s = pcall(love.graphics.newShader, shaderCode)
     if ok then game.darknessShader = s end
 
-    -- Attack Helper Global
+    -- attack helper global
     _G.performPlayerAttack = function(player)
-        -- Keep logic from previous main.lua, just accessing global game
-        -- (Logic for hit detection is inside GameState anyway usually, but keeping global for Player class)
         local range = 64
         local px, py = player.pixelX, player.pixelY
         local fx, fy = 0, 0
@@ -114,6 +232,10 @@ function love.load()
                     if (fx==0 and fy==0) or (nx*fx + ny*fy >= 0) then
                         e.isDead = true
                         e.direction = nil
+                        -- play the attack sound when enemy is hit (same as bat)
+                        if _G and type(_G.playAttackSound) == "function" then
+                            pcall(function() _G.playAttackSound() end)
+                        end
                         if game.hitParticles then 
                             game.hitParticles:setPosition(e.pixelX, e.pixelY)
                             game.hitParticles:emit(20)
@@ -131,7 +253,7 @@ function love.load()
         end
     end
 
-    -- Start in Menu
+    -- start in Menu
     State.switch("menu")
 end
 
@@ -139,6 +261,9 @@ function love.update(dt)
     if State.current and State.current.update then
         State.current.update(dt)
     end
+
+    -- update music manager
+    if game.music and game.music.update then game.music:update(dt) end
 end
 
 function love.draw()

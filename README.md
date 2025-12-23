@@ -4,7 +4,7 @@
 
 <img width="619" height="602" alt="Screenshot 2025-11-13 225537" src="https://github.com/user-attachments/assets/4da630b1-b189-40a4-87ee-b94839f55039" />
 
-A small procedural maze explorer I made with Love2D and my old maze generation algorythm™.
+A small procedural maze explorer I made with Love2D and my maze generation algorythm (KWFC™).
 
 **What it is:**
 
@@ -24,7 +24,6 @@ love .
 
 - Audio and image assets are under `assets/`.
 - Game code lives in `src/` and `main.lua`.
-- If you see a `game.log` file it is a runtime log — I ignore it in `.gitignore`.
 
 **Build / Debug tips:**
 
@@ -40,10 +39,8 @@ Debug
 - Darkness: press `F` to cycle darkness presets (changes how the radial darkness around the player looks).
 
 **Credits:**
-**Credits:**
 
-- Maze generator: the game uses a C native library I developed — it's a heavily modified wave fucntioncollapse algorythim with
-  maze solvability validation.
+- Maze generator: the game uses a C native library I developed — it's a heavily modified and optimized wave fucntioncollapse algorythim with maze solvability validation.
 - Audio: all sounds were recorded and produced by me (guitar).
 
 **License**

@@ -4,10 +4,37 @@ function Menu.enter()
     -- Reset selection when entering menu
     Menu.selection = 1
     Menu.options = {"START GAME", "QUIT"}
+
+    -- menu music timer: we want silence for the first 10s
+    Menu.menuTimer = 0
+    Menu.track2Started = false
+
+    -- ensure nothing is playing when entering menu
+    if game and game.music then
+        -- stop any playing source and set state to menu_wait so update keeps silence
+        if game.music.current then
+            pcall(function() game.music.current:stop() end)
+        end
+        game.music.current = nil
+        game.music.currentIdx = nil
+        game.music.currentName = nil
+        game.music.currentTargetVolume = 0
+        game.music.state = "menu_wait"
+    end
 end
 
 function Menu.update(dt)
     -- Add menu animations here if you want later
+    -- Wait 10s in silence, then start track 2. After that, music manager resumes normal behavior
+    if game and game.music and game.music.state == "menu_wait" and not Menu.track2Started and #game.music.tracks >= 2 then
+        Menu.menuTimer = Menu.menuTimer + dt
+        if Menu.menuTimer >= 10 then
+            -- start the second track directly
+            game.music:startTrack(2)
+            Menu.track2Started = true
+            -- normal behavior resumes and music manager will handle following tracks
+        end
+    end
 end
 
 function Menu.draw()
